@@ -101,8 +101,10 @@ function update(key, p01) {
 }
 
 function computeAxes() {
+  // Convención de gamepad (XInput): +1 derecha (D), +1 ARRIBA (W)
+  // X = D − A, Y = W − S  →  W presionada = y +1 = stick arriba
   let X = state.D - state.A;
-  let Y = state.S - state.W;
+  let Y = state.W - state.S;
   const len = Math.hypot(X, Y);
   if (len > 1) { X /= len; Y /= len; }
   if (Math.abs(X) < 0.005) X = 0;
@@ -117,7 +119,7 @@ function renderStick() {
   const R = area.clientWidth/2 - 30;
   const dot = $('stickDot');
   dot.style.left = (cx + X*R) + 'px';
-  dot.style.top  = (cy + Y*R) + 'px';
+  dot.style.top  = (cy - Y*R) + 'px';   // Y positivo = arriba en pantalla
   $('readout').textContent = `X: ${X.toFixed(2)}  Y: ${Y.toFixed(2)}`;
   // enviar al daemon (throttle: solo si cambió > 0.005)
   if (wsConnected && (Math.abs(X-lastSent.x) > 0.005 || Math.abs(Y-lastSent.y) > 0.005)) {

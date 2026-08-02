@@ -90,11 +90,11 @@ function update(key, p01) {
 }
 
 function renderStick() {
-  // Ejes en rango completo [-1, 1]:
+  // Convención de gamepad (XInput): +1 derecha (D), +1 ARRIBA (W)
   //   X = D − A  → +1 derecha (D), -1 izquierda (A)
-  //   Y = S − W  → -1 arriba (W), +1 abajo (S)
+  //   Y = W − S  → +1 arriba (W), -1 abajo (S)
   let X = state.D - state.A;
-  let Y = state.S - state.W;
+  let Y = state.W - state.S;
 
   // Circle clamp: el área alcanzable con WASD es un cuadrado;
   // un stick real es circular → si el vector excede radio 1, lo recortamos.
@@ -110,7 +110,7 @@ function renderStick() {
   const R = area.clientWidth/2 - 30;
   const dot = $('stickDot');
   dot.style.left = (cx + X*R) + 'px';
-  dot.style.top  = (cy + Y*R) + 'px';
+  dot.style.top  = (cy - Y*R) + 'px';   // Y positivo = arriba en pantalla
   $('readout').textContent = `X: ${X.toFixed(2)}  Y: ${Y.toFixed(2)}`;
   $('axX').textContent = X.toFixed(2);
   $('axY').textContent = Y.toFixed(2);
