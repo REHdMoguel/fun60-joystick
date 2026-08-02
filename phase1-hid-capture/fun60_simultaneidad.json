@@ -1,0 +1,10 @@
+{
+  "test": "simultaneidad_wasd",
+  "timestamp": "2026-08-02T18:56:43.435Z",
+  "max_pressure": 325,
+  "keymap": { "W": 14, "A": 9, "S": 15, "D": 21 },
+  "codes_detectados": [9, 14, 15, 21],
+  "teclas_detectadas": ["A", "W", "S", "D"],
+  "num_teclas_simultaneas": 4,
+  "conclusion": "El teclado SÍ reporta varias teclas (alterna o multiplexa)"
+}

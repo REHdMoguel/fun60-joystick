@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>FUN60 Joystick — Fase 3: Mando virtual</title>
+<style>
+  body { font-family: 'Cascadia Code', Consolas, monospace; background:#111; color:#ddd; padding:16px; max-width:960px; margin:0 auto; }
+  h1 { font-size:18px; color:#7ee787; }
+  button { background:#238636; color:#fff; border:none; padding:10px 16px; font-size:15px; cursor:pointer; border-radius:4px; margin:4px; }
+  button:disabled { background:#444; cursor:not-allowed; }
+  button.blue { background:#1f6feb; }
+  #status { color:#ffa657; margin:10px 0; font-size:14px; min-height:20px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px; margin:12px 0; }
+  .cols { display:flex; gap:24px; flex-wrap:wrap; align-items:center; }
+  #stickArea { position:relative; width:280px; height:280px; border:2px solid #30363d; border-radius:50%; background:radial-gradient(circle at 50% 50%, #1c2128 0%, #101418 100%); }
+  #stickDot { position:absolute; width:44px; height:44px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #58a6ff, #1f6feb); left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 0 18px rgba(88,166,255,.6); }
+  .axis { font-size:12px; color:#888; position:absolute; }
+  #lblN { top:4px; left:50%; transform:translateX(-50%); } #lblS { bottom:4px; left:50%; transform:translateX(-50%); }
+  #lblW { left:6px; top:50%; transform:translateY(-50%); } #lblE { right:6px; top:50%; transform:translateY(-50%); }
+  .kb { display:flex; gap:12px; margin:8px 0; flex-wrap:wrap; }
+  .keybox { border:1px solid #555; padding:8px 12px; border-radius:6px; background:#1a1a1a; text-align:center; min-width:110px; }
+  .keybox .k { font-size:20px; font-weight:bold; }
+  .keybox .v { font-size:22px; color:#58a6ff; }
+  .bar { height:8px; background:#222; border-radius:4px; overflow:hidden; margin-top:4px; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#238636,#7ee787); width:0%; transition:width 20ms linear; }
+  #readout { font-size:22px; color:#7ee787; margin:8px 0; min-height:30px; }
+  #log { background:#0a0a0a; border:1px solid #333; height:100px; overflow-y:auto; padding:8px; font-size:11px; white-space:pre; }
+  .ok { color:#3fb950; } .warn { color:#d29922; } .bad { color:#f85149; }
+  .toggle { display:inline-flex; align-items:center; gap:8px; margin:8px 0; font-size:15px; }
+</style>
+</head>
+<body>
+<h1>🎮 FUN60 Joystick — Fase 3: Mando virtual Xbox</h1>
+<p><span id="status" class="warn">⏸ Desconectado</span></p>
+<p>
+  <button id="btnConnect" onclick="connect()">🔌 Conectar teclado</button>
+  <button class="blue" id="btnDaemon" onclick="connectDaemon()">🔗 Conectar al daemon (mando virtual)</button>
+</p>
+
+<div class="card">
+  <div class="toggle">
+    <label>🎯 Stick: </label>
+    <select id="stickMode" onchange="setMode()">
+      <option value="left">Izquierdo</option>
+      <option value="right">Derecho</option>
+    </select>
+    <label style="margin-left:16px">
+      <input type="checkbox" id="blockKeys" checked onchange="setBlockKeys()">
+      🚫 Bloquear teclas W/A/S/D (solo llegan al mando)
+    </label>
+    <span id="wsState" class="warn">daemon: desconectado</span>
+  </div>
+  <div class="cols">
+    <div id="stickArea">
+      <div id="stickDot"></div>
+      <span class="axis" id="lblN">N (W)</span><span class="axis" id="lblS">S</span>
+      <span class="axis" id="lblW">W (A)</span><span class="axis" id="lblE">E (D)</span>
+    </div>
+    <div style="flex:1;min-width:280px">
+      <div id="readout">X: 0.00  Y: 0.00</div>
+      <div class="kb" id="kb"></div>
+    </div>
+  </div>
+</div>
+
+<h2>Log</h2>
+<div id="log"></div>
+
+<script>
+const VENDOR = 0x3151;
+const PRODUCTS = [0x5029, 0x5028, 0x5025, 0x5021, 0x0001];
+const MAX_PRESSURE = 325;
+const KEYMAP = { 14: 'W', 9: 'A', 15: 'S', 21: 'D' };
+const WS_URL = 'ws://127.0.0.1:8765';
+const state = { W: 0, A: 0, S: 0, D: 0 };
+let device = null;
+let ws = null;
+let wsConnected = false;
+let lastSent = { x: 0, y: 0 };
+
+const $ = id => document.getElementById(id);
+const st = (txt, cls='warn') => { $('status').innerHTML = `<span class="${cls}">${txt}</span>`; };
+const log = txt => { const l=$('log'); l.textContent += txt + '\n'; if (l.textContent.length>8000) l.textContent=l.textContent.slice(-6000); l.scrollTop=l.scrollHeight; };
+
+function buildBars() {
+  ['W','A','S','D'].forEach(k => {
+    const box = document.createElement('div');
+    box.className = 'keybox';
+    box.id = 'kb_'+k;
+    box.innerHTML = `<div class="k">${k}</div><div class="v">0.00</div><div class="bar"><div id="bar_${k}"></div></div>`;
+    $('kb').appendChild(box);
+  });
+}
+buildBars();
+
+function update(key, p01) {
+  state[key] = p01;
+  const el = $('kb_'+key);
+  if (el) { el.querySelector('.v').textContent = p01.toFixed(2); el.querySelector('.bar > div').style.width = (p01*100).toFixed(1)+'%'; }
+  renderStick();
+}
+
+function computeAxes() {
+  let X = state.D - state.A;
+  let Y = state.S - state.W;
+  const len = Math.hypot(X, Y);
+  if (len > 1) { X /= len; Y /= len; }
+  if (Math.abs(X) < 0.005) X = 0;
+  if (Math.abs(Y) < 0.005) Y = 0;
+  return { X, Y };
+}
+
+function renderStick() {
+  const { X, Y } = computeAxes();
+  const area = $('stickArea');
+  const cx = area.clientWidth/2, cy = area.clientHeight/2;
+  const R = area.clientWidth/2 - 30;
+  const dot = $('stickDot');
+  dot.style.left = (cx + X*R) + 'px';
+  dot.style.top  = (cy + Y*R) + 'px';
+  $('readout').textContent = `X: ${X.toFixed(2)}  Y: ${Y.toFixed(2)}`;
+  // enviar al daemon (throttle: solo si cambió > 0.005)
+  if (wsConnected && (Math.abs(X-lastSent.x) > 0.005 || Math.abs(Y-lastSent.y) > 0.005)) {
+    lastSent = { x: X, y: Y };
+    ws.send(JSON.stringify({ x: X, y: Y }));
+  }
+}
+
+function onReport(reportId, data) {
+  const bytes = Array.from(new Uint8Array(data.buffer || data));
+  if (bytes.length < 4) return;
+  const pressure = bytes[2]*256 + bytes[1];
+  const code = bytes[3];
+  const letter = KEYMAP[code];
+  if (!letter) return;
+  update(letter, Math.min(pressure / MAX_PRESSURE, 1.0));
+}
+
+async function connect() {
+  if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
+  try {
+    const devices = await navigator.hid.requestDevice({
+      filters: [
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid })),
+      ]
+    });
+    if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
+    device = devices[0];
+    await device.open();
+    st(`✅ Teclado conectado: ${device.productName}`, 'ok');
+    log('✅ Teclado conectado.');
+    device.addEventListener('inputreport', e => onReport(e.reportId, e.data));
+  } catch (e) { st('❌ Error: ' + e.message); }
+}
+
+function connectDaemon() {
+  if (ws && ws.readyState === WebSocket.OPEN) { ws.close(); return; }
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) { st('❌ No se pudo crear WebSocket: ' + e.message); return; }
+  ws.onopen = () => {
+    wsConnected = true;
+    $('wsState').textContent = 'daemon: ✅ conectado';
+    $('wsState').className = 'ok';
+    $('btnDaemon').textContent = '🔌 Desconectar daemon';
+    st('✅ Enviando ejes al mando virtual... presiona WASD', 'ok');
+    log('✅ Conectado al daemon. El stick virtual debe moverse.');
+    // enviar estado inicial: modo + bloqueo de teclas
+    ws.send(JSON.stringify({ mode: $('stickMode').value, block_keys: $('blockKeys').checked }));
+  };
+  ws.onclose = () => {
+    wsConnected = false;
+    $('wsState').textContent = 'daemon: desconectado';
+    $('wsState').className = 'warn';
+    $('btnDaemon').textContent = '🔗 Conectar al daemon (mando virtual)';
+  };
+  ws.onerror = () => {
+    $('wsState').textContent = 'daemon: ⚠️ error de conexión (¿daemon corriendo?)';
+    $('wsState').className = 'bad';
+    log('⚠️ No se pudo conectar al daemon. ¿Ejecutaste joy_daemon.py?');
+  };
+}
+
+function setMode() {
+  if (wsConnected) ws.send(JSON.stringify({ mode: $('stickMode').value }));
+}
+
+function setBlockKeys() {
+  const on = $('blockKeys').checked;
+  if (wsConnected) ws.send(JSON.stringify({ block_keys: on }));
+  log((on ? '🚫 Bloqueo de W/A/S/D ACTIVADO' : '✅ Bloqueo de W/A/S/D desactivado') + ' (las teclas vuelven a funcionar normal)');
+}
+</script>
+</body>
+</html>

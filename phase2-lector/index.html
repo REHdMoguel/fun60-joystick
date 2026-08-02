@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>FUN60 Joystick — Prototipo Fase 2</title>
+<style>
+  body { font-family: 'Cascadia Code', Consolas, monospace; background:#111; color:#ddd; padding:16px; max-width:960px; margin:0 auto; }
+  h1 { font-size:18px; color:#7ee787; }
+  button { background:#238636; color:#fff; border:none; padding:10px 16px; font-size:15px; cursor:pointer; border-radius:4px; margin:4px; }
+  button:disabled { background:#444; cursor:not-allowed; }
+  #status { color:#ffa657; margin:10px 0; font-size:14px; min-height:20px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px; margin:12px 0; }
+  .cols { display:flex; gap:24px; flex-wrap:wrap; align-items:center; }
+  /* Joystick */
+  #stickArea { position:relative; width:280px; height:280px; border:2px solid #30363d; border-radius:50%; background:radial-gradient(circle at 50% 50%, #1c2128 0%, #101418 100%); }
+  #stickDot { position:absolute; width:44px; height:44px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #58a6ff, #1f6feb); left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 0 18px rgba(88,166,255,.6); }
+  #stickCross { position:absolute; left:50%; top:50%; width:0; height:0; opacity:.25; }
+  .axis { font-size:12px; color:#888; position:absolute; }
+  #lblN { top:4px; left:50%; transform:translateX(-50%); } #lblS { bottom:4px; left:50%; transform:translateX(-50%); }
+  #lblW { left:6px; top:50%; transform:translateY(-50%); } #lblE { right:6px; top:50%; transform:translateY(-50%); }
+  /* Key bars */
+  .kb { display:flex; gap:12px; margin:8px 0; flex-wrap:wrap; }
+  .keybox { border:1px solid #555; padding:8px 12px; border-radius:6px; background:#1a1a1a; text-align:center; min-width:110px; }
+  .keybox .k { font-size:20px; font-weight:bold; }
+  .keybox .v { font-size:22px; color:#58a6ff; }
+  .bar { height:8px; background:#222; border-radius:4px; overflow:hidden; margin-top:4px; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#238636,#7ee787); width:0%; transition:width 20ms linear; }
+  #readout { font-size:22px; color:#7ee787; margin:8px 0; min-height:30px; }
+  #log { background:#0a0a0a; border:1px solid #333; height:120px; overflow-y:auto; padding:8px; font-size:11px; white-space:pre; }
+  .ok { color:#3fb950; } .warn { color:#d29922; }
+  table { border-collapse:collapse; } td,th { border:1px solid #333; padding:4px 10px; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>🎮 FUN60 Joystick — Prototipo lector (Fase 2)</h1>
+<p><span id="status" class="warn">⏸ Desconectado</span></p>
+<p><button id="btnConnect" onclick="connect()">🔌 Conectar teclado</button></p>
+
+<div class="card">
+  <div class="cols">
+    <div id="stickArea">
+      <div id="stickCross"></div>
+      <div id="stickDot"></div>
+      <span class="axis" id="lblN">N (W)</span><span class="axis" id="lblS">S</span>
+      <span class="axis" id="lblW">W (A)</span><span class="axis" id="lblE">E (D)</span>
+    </div>
+    <div style="flex:1;min-width:280px">
+      <div id="readout">X: 0.00  Y: 0.00  — conecta y presiona WASD</div>
+      <div class="kb" id="kb"></div>
+      <table>
+        <tr><th>Eje</th><th>Fórmula</th><th>Valor</th></tr>
+        <tr><td>X</td><td>D − A (circle-clamped)</td><td id="axX">0.00</td></tr>
+        <tr><td>Y</td><td>S − W (neg. = arriba)</td><td id="axY">0.00</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<h2>Log</h2>
+<div id="log"></div>
+
+<script>
+const VENDOR = 0x3151;
+const PRODUCTS = [0x5029, 0x5028, 0x5025, 0x5021, 0x0001];
+const MAX_PRESSURE = 325;
+const KEYMAP = { 14: 'W', 9: 'A', 15: 'S', 21: 'D' };
+const state = { W: 0, A: 0, S: 0, D: 0 };
+let device = null;
+
+const $ = id => document.getElementById(id);
+const st = (txt, cls='warn') => { $('status').innerHTML = `<span class="${cls}">${txt}</span>`; };
+const log = txt => { const l=$('log'); l.textContent += txt + '\n'; if (l.textContent.length>12000) l.textContent=l.textContent.slice(-9000); l.scrollTop=l.scrollHeight; };
+
+function buildBars() {
+  ['W','A','S','D'].forEach(k => {
+    const box = document.createElement('div');
+    box.className = 'keybox';
+    box.id = 'kb_'+k;
+    box.innerHTML = `<div class="k">${k}</div><div class="v">0.00</div><div class="bar"><div id="bar_${k}"></div></div>`;
+    $('kb').appendChild(box);
+  });
+}
+buildBars();
+
+function update(key, p01) {
+  state[key] = p01;
+  const el = $('kb_'+key);
+  if (el) { el.querySelector('.v').textContent = p01.toFixed(2); el.querySelector('.bar > div').style.width = (p01*100).toFixed(1)+'%'; }
+  renderStick();
+}
+
+function renderStick() {
+  // Ejes en rango completo [-1, 1]:
+  //   X = D − A  → +1 derecha (D), -1 izquierda (A)
+  //   Y = S − W  → -1 arriba (W), +1 abajo (S)
+  let X = state.D - state.A;
+  let Y = state.S - state.W;
+
+  // Circle clamp: el área alcanzable con WASD es un cuadrado;
+  // un stick real es circular → si el vector excede radio 1, lo recortamos.
+  const len = Math.hypot(X, Y);
+  if (len > 1) { X /= len; Y /= len; }
+
+  // Zona muerta mínima para evitar temblor en reposo
+  if (Math.abs(X) < 0.005) X = 0;
+  if (Math.abs(Y) < 0.005) Y = 0;
+
+  const area = $('stickArea');
+  const cx = area.clientWidth/2, cy = area.clientHeight/2;
+  const R = area.clientWidth/2 - 30;
+  const dot = $('stickDot');
+  dot.style.left = (cx + X*R) + 'px';
+  dot.style.top  = (cy + Y*R) + 'px';
+  $('readout').textContent = `X: ${X.toFixed(2)}  Y: ${Y.toFixed(2)}`;
+  $('axX').textContent = X.toFixed(2);
+  $('axY').textContent = Y.toFixed(2);
+}
+
+function onReport(reportId, data) {
+  const bytes = Array.from(new Uint8Array(data.buffer || data));
+  if (bytes.length < 4) return;
+  const pressure = bytes[2]*256 + bytes[1];
+  const code = bytes[3];
+  const letter = KEYMAP[code];
+  if (!letter) return;   // ignorar códigos no WASD
+  const p01 = Math.min(pressure / MAX_PRESSURE, 1.0);
+  update(letter, p01);
+}
+
+async function connect() {
+  if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
+  try {
+    const devices = await navigator.hid.requestDevice({
+      filters: [
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid })),
+      ]
+    });
+    if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
+    device = devices[0];
+    await device.open();
+    st(`✅ Conectado: ${device.productName} — presiona WASD para mover el stick`, 'ok');
+    log('✅ Conectado. Mueve el "joystick" presionando WASD con profundidad variable.');
+    device.addEventListener('inputreport', e => onReport(e.reportId, e.data));
+  } catch (e) { st('❌ Error: ' + e.message); }
+}
+</script>
+</body>
+</html>

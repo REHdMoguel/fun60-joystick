@@ -1,0 +1,14 @@
+{
+  "map": { "W": 14, "A": 9, "S": 15, "D": 21 },
+  "rev": { "9": "A", "14": "W", "15": "S", "21": "D" },
+  "max_pressure": 325,
+  "vendor": 12625,
+  "products": [20521, 20520, 20517, 20513, 1],
+  "protocol": {
+    "report_id": 5,
+    "length_bytes": 31,
+    "header_byte0": "0x1B",
+    "pressure": "byte2*256 + byte1 (9-bit, satura ~325)",
+    "key_code": "byte3"
+  }
+}

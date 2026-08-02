@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Logs y archivos temporales de pruebas
+phase3-daemon/test_fisico_out.txt
+phase3-daemon/test_block_out.txt
+*.log
+
+# Descargas / instaladores
+*.exe
+
+# Sistema
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Config local del usuario (no subir)
+*.local

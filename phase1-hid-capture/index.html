@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>FUN60 Ultra TMR — Asistente de mapeo v2 (Fase 2)</title>
+<style>
+  body { font-family: 'Cascadia Code', Consolas, monospace; background:#111; color:#ddd; padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; color:#7ee787; }
+  button { background:#238636; color:#fff; border:none; padding:10px 16px; font-size:15px; cursor:pointer; border-radius:4px; margin:4px; }
+  button:disabled { background:#444; cursor:not-allowed; }
+  button.secondary { background:#1f6feb; }
+  button.danger { background:#a40e26; }
+  #status { color:#ffa657; margin:10px 0; font-size:14px; min-height:20px; }
+  #prompt { font-size:26px; color:#fff; margin:16px 0; min-height:40px; text-align:center; }
+  #liveKey { font-size:64px; color:#58a6ff; text-align:center; min-height:80px; font-weight:bold; }
+  #livePres { font-size:20px; color:#7ee787; text-align:center; min-height:28px; }
+  #phase { font-size:14px; color:#d29922; text-align:center; min-height:20px; }
+  table { border-collapse:collapse; margin:12px 0; width:100%; }
+  td, th { border:1px solid #333; padding:8px 12px; font-size:15px; text-align:center; }
+  .mapped { color:#7ee787; font-weight:bold; }
+  .ok { color:#3fb950; } .warn { color:#d29922; }
+  .bar { height:10px; background:#222; border-radius:4px; overflow:hidden; margin-top:4px; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#238636,#7ee787); width:0%; }
+  #log { background:#0a0a0a; border:1px solid #333; height:140px; overflow-y:auto; padding:8px; font-size:11px; white-space:pre; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px; margin:12px 0; }
+</style>
+</head>
+<body>
+<h1>🎮 FUN60 Ultra TMR — Asistente de mapeo v2</h1>
+<p><span id="status" class="warn">⏸ Desconectado</span></p>
+<p>
+  <button id="btnConnect" onclick="connect()">🔌 Conectar teclado</button>
+  <button id="btnMap" class="secondary" onclick="startMapping()" disabled>🧭 Iniciar mapeo W/A/S/D</button>
+  <button id="btnMulti" class="secondary" onclick="startMulti()" disabled>👥 Prueba WASD simultáneo</button>
+  <button class="danger" onclick="resetMap()">🗑 Reiniciar mapa</button>
+  <button onclick="exportMap()">💾 Exportar mapa</button>
+</p>
+
+<div class="card">
+  <div id="prompt">Conecta el teclado para comenzar</div>
+  <div id="phase">&nbsp;</div>
+  <div id="liveKey">—</div>
+  <div id="livePres">—</div>
+  <div class="bar"><div id="liveBar"></div></div>
+</div>
+
+<h2>Mapa de teclas</h2>
+<table id="mapTable">
+  <tr><th>Tecla</th><th>Código</th><th>Estado</th></tr>
+  <tr id="rowW"><td><b>W</b></td><td id="codeW">?</td><td id="stateW">pendiente</td></tr>
+  <tr id="rowA"><td><b>A</b></td><td id="codeA">?</td><td id="stateA">pendiente</td></tr>
+  <tr id="rowS"><td><b>S</b></td><td id="codeS">?</td><td id="stateS">pendiente</td></tr>
+  <tr id="rowD"><td><b>D</b></td><td id="codeD">?</td><td id="stateD">pendiente</td></tr>
+</table>
+
+<h2>Log</h2>
+<div id="log"></div>
+
+<script>
+const VENDOR = 0x3151;
+const PRODUCTS = [0x5029, 0x5028, 0x5025, 0x5021, 0x0001];
+const MAX_PRESSURE = 325;
+const SEQ = ['W','A','S','D'];
+const PRESS_TH = 30;   // presión para considerar "presionada"
+const RELEASE_TH = 15; // presión para considerar "soltada"
+const map = {};
+const rev = {};
+let device = null;
+let mapping = false;
+let multiTest = false;
+let curKey = null;
+let phase = 'idle';     // idle | wait_down | wait_up | done
+let lastCapturedCode = null;
+let multi = {};
+
+const $ = id => document.getElementById(id);
+const st = (txt, cls='warn') => { $('status').innerHTML = `<span class="${cls}">${txt}</span>`; };
+const log = txt => { const l=$('log'); l.textContent += txt + '\n'; if (l.textContent.length>15000) l.textContent=l.textContent.slice(-12000); l.scrollTop=l.scrollHeight; };
+
+function setCode(letter, code) {
+  map[letter] = code; rev[code] = letter;
+  $('code'+letter).textContent = '0x' + code.toString(16).padStart(2,'0');
+  $('code'+letter).className = 'mapped';
+  $('state'+letter).textContent = '✅ mapeada';
+  $('state'+letter).className = 'ok';
+}
+
+async function connect() {
+  if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
+  try {
+    const devices = await navigator.hid.requestDevice({
+      filters: [
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
+        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid })),
+      ]
+    });
+    if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
+    device = devices[0];
+    await device.open();
+    st(`✅ Conectado: ${device.productName}`, 'ok');
+    $('btnMap').disabled = false;
+    $('btnMulti').disabled = false;
+    device.addEventListener('inputreport', e => onReport(e.reportId, e.data));
+  } catch (e) { st('❌ Error: ' + e.message); }
+}
+
+function onReport(reportId, data) {
+  const bytes = Array.from(new Uint8Array(data.buffer || data));
+  if (bytes.length < 4) return;
+  const pressure = bytes[2] * 256 + bytes[1];
+  const code = bytes[3];
+  const p01 = Math.min(pressure / MAX_PRESSURE, 1.0);
+
+  // visualización en vivo
+  const letter = rev[code];
+  $('liveKey').textContent = letter ? `[${letter}]` : ('0x' + code.toString(16).padStart(2,'0'));
+  $('livePres').textContent = `presión ${pressure} → ${p01.toFixed(2)}`;
+  $('liveBar').style.width = (p01*100).toFixed(1) + '%';
+
+  // ---- MODO MAPEO: máquina de estados ----
+  if (mapping && curKey) {
+    if (phase === 'wait_down') {
+      // esperamos reposo -> presionado CON código distinto al ya capturado
+      if (pressure > PRESS_TH && code !== lastCapturedCode) {
+        curCode = code;
+        setCode(curKey, code);
+        log(`✔ [${curKey}] → código 0x${code.toString(16).padStart(2,'0')} (presión ${pressure})`);
+        lastCapturedCode = code;
+        phase = 'wait_up';
+        $('phase').textContent = 'Ahora SUELTA la tecla...';
+        // avanzar a la siguiente tecla pero esperar a que suelte
+        const idx = SEQ.indexOf(curKey);
+        if (idx >= SEQ.length - 1) {
+          finishMapping();
+        } else {
+          // siguiente tecla pendiente, pero no la pedimos hasta soltar
+        }
+      }
+    } else if (phase === 'wait_up') {
+      if (pressure < RELEASE_TH) {
+        // tecla soltada -> pedir la siguiente
+        const idx = SEQ.indexOf(curKey);
+        if (idx >= SEQ.length - 1) {
+          finishMapping();
+        } else {
+          curKey = SEQ[idx + 1];
+          phase = 'wait_down';
+          $('phase').textContent = 'Esperando pulsación...';
+          $('prompt').innerHTML = `Presiona <b>${curKey}</b> y mantenla 1-2 segundos, luego SUELTA`;
+          log(`Suelta detectada. Ahora presiona [${curKey}]`);
+        }
+      }
+    }
+  }
+
+  // ---- MODO MULTI ----
+  if (multiTest && pressure > 20) {
+    multi[code] = { pres: pressure, ts: Date.now() };
+  }
+}
+
+function finishMapping() {
+  mapping = false; phase = 'done';
+  curKey = null;
+  $('prompt').textContent = '✅ Mapeo completo';
+  $('phase').textContent = 'Revisa la tabla. Luego prueba la simultaneidad.';
+  st('✅ Mapeo terminado', 'ok');
+  log('Mapeo completo: ' + JSON.stringify(map));
+  if (Object.keys(map).length === 4) {
+    const unique = new Set(Object.values(map)).size;
+    if (unique < 4) log('⚠️ Hay códigos duplicados — revisa. Cada tecla debe tener un código distinto.');
+  }
+}
+
+function startMapping() {
+  resetMap();
+  mapping = true; multiTest = false;
+  curKey = 'W'; phase = 'wait_down'; lastCapturedCode = null;
+  $('prompt').innerHTML = `Presiona <b>W</b> y mantenla 1-2 segundos, luego SUELTA`;
+  $('phase').textContent = 'Esperando pulsación de W...';
+  log('=== MAPEO: presiona W, suelta; A, suelta; S, suelta; D, suelta ===');
+  log('(espera a que la pantalla pida la siguiente tecla antes de presionar)');
+}
+
+function resetMap() {
+  SEQ.forEach(l => { delete map[l]; });
+  Object.keys(rev).forEach(c => delete rev[c]);
+  SEQ.forEach(l => {
+    $('code'+l).textContent = '?'; $('code'+l).className = '';
+    $('state'+l).textContent = 'pendiente'; $('state'+l).className = '';
+  });
+  mapping = false; multiTest = false; phase = 'idle';
+  $('prompt').textContent = 'Mapa reiniciado. Pulsa "Iniciar mapeo" cuando quieras.';
+  $('phase').textContent = '&nbsp;';
+}
+
+function startMulti() {
+  mapping = false; multiTest = true; multi = {};
+  $('prompt').innerHTML = 'Presiona <b>W + A</b> juntas, luego <b>W + D</b>, luego <b>las 4</b>. Mantén 2-3s cada combo.';
+  $('phase').textContent = 'Grabando 15 segundos...';
+  log('=== Prueba de simultaneidad: combos W+A, W+D, WASD ===');
+  setTimeout(() => {
+    multiTest = false;
+    const codes = Object.keys(multi).map(Number).sort((a,b)=>a-b);
+    const letters = codes.map(c => rev[c] || ('0x'+c.toString(16)));
+    $('prompt').innerHTML = `✅ Códigos detectados: ${letters.join(', ')}`;
+    $('phase').textContent = codes.length>1 ? '→ SÍ se detectan varias teclas' : '→ solo una tecla a la vez';
+    st('Resultado: ' + letters.join(', ') + (codes.length>1 ? ' → varias teclas OK' : ' → una sola tecla'), codes.length>1?'ok':'warn');
+    log(`Simultaneidad: ${letters.join(', ')} (${codes.length} códigos)`);
+    // Guardar resultado automáticamente en JSON
+    const result = {
+      test: 'simultaneidad_wasd',
+      timestamp: new Date().toISOString(),
+      max_pressure: MAX_PRESSURE,
+      keymap: {...map},
+      codes_detectados: codes,
+      teclas_detectadas: letters,
+      num_teclas_simultaneas: codes.length,
+      conclusion: codes.length > 1
+        ? 'El teclado SÍ reporta varias teclas (alterna o multiplexa)'
+        : 'El teclado reporta UNA tecla a la vez'
+    };
+    const blob = new Blob([JSON.stringify(result, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fun60_simultaneidad.json';
+    a.click();
+    log('📁 Resultado guardado: fun60_simultaneidad.json');
+  }, 15000);
+}
+
+function exportMap() {
+  const blob = new Blob([JSON.stringify({map, rev, max_pressure: MAX_PRESSURE, vendor: VENDOR, products: PRODUCTS}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fun60_keymap.json';
+  a.click();
+}
+</script>
+</body>
+</html>
