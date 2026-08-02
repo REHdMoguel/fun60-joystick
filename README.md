@@ -64,9 +64,15 @@ pero donde prefieres usar tu teclado.
 ### Paso 3 — Ejecutar el lanzador
 
 1. **Doble clic** en `iniciar.bat`
-2. La primera vez instalará las librerías necesarias (tarda un minuto, solo pasa una vez)
-3. Si falta Python, el lanzador te dirá exactamente cómo instalarlo y volver a intentar
-4. Al final se abrirá **automáticamente** el navegador con la página del joystick
+2. El lanzador **encuentra Python solo** (no necesitas tenerlo en el PATH del sistema)
+   y la primera vez instalará las librerías necesarias (tarda un minuto, solo pasa una vez)
+3. Al final se abrirá **automáticamente** la página del joystick en tu navegador
+
+> 💡 **¿Y el servidor localhost?** No es necesario. La página funciona abierta
+> directamente como archivo local (Chrome/Edge permiten WebHID en `file://`).
+> El lanzador abre el archivo `phase3-joystick/index.html` sin servidor.
+> Si prefieres usarlo con servidor (opcional), abre `http://localhost:8080`
+> después de ejecutar `python -m http.server 8080` en la carpeta del proyecto.
 
 ### Paso 4 — Conectar y jugar
 
