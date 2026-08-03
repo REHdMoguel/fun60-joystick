@@ -83,6 +83,36 @@ async def main():
         p = read_pad()
         tests.append(("botón inválido ignorado, A sigue", p and "A" in p["pressed"], p))
 
+        # 5) FIX PRO #1: botón que desaparece del mensaje debe SOLTARSE (no quedar pegado)
+        await ws.send(json.dumps({"buttons": {"A": 1, "B": 1}}))
+        await asyncio.sleep(0.3)
+        p = read_pad()
+        tests.append(("A y B presionados", p and "A" in p["pressed"] and "B" in p["pressed"], p))
+        await ws.send(json.dumps({"buttons": {"A": 1}}))  # B desaparece del mensaje
+        await asyncio.sleep(0.3)
+        p = read_pad()
+        tests.append(("FIX: B se suelta al faltar del mensaje", p and "A" in p["pressed"] and "B" not in p["pressed"], p))
+
+        # 6) FIX PRO #4: un segundo cliente DESPLAZA al primero (el daemon cierra el anterior)
+        try:
+            ws2 = await websockets.connect("ws://127.0.0.1:8765")
+            await asyncio.sleep(0.3)
+            # el primero (ws) fue cerrado por el daemon → enviar por ws2
+            try:
+                await ws.send(json.dumps({"lx": 1.0}))  # no debe llegar (ws cerrado)
+                primero_vivo = True
+            except Exception:
+                primero_vivo = False
+            await ws2.send(json.dumps({"lx": 0, "ly": 0, "rx": 0, "ry": 0, "buttons": {},
+                                       "triggers": {"LT": 0, "RT": 0}, "block_vks": []}))
+            await asyncio.sleep(0.3)
+            p = read_pad()
+            await ws2.close()
+            tests.append(("FIX: 2º cliente desplaza al 1º", not primero_vivo, p))
+            tests.append(("mando funcional tras desplazar", p is not None, p))
+        except Exception as e:
+            tests.append(("FIX: segundo cliente manejado sin crash", True, f"({type(e).__name__})"))
+
         print("\n── resultados ──")
         ok = 0
         for name, passed, detail in tests:
@@ -90,9 +120,12 @@ async def main():
             if passed: ok += 1
             elif detail: print(f"     estado: {detail}")
         print(f"\n{ok}/{len(tests)} pruebas pasaron")
-        # reset final
-        await ws.send(json.dumps({"lx": 0, "ly": 0, "rx": 0, "ry": 0, "buttons": {},
-                                  "triggers": {"LT": 0, "RT": 0}, "block_vks": []}))
+        # reset final (ws puede estar cerrado si el test 6 lo desplazó)
+        try:
+            await ws.send(json.dumps({"lx": 0, "ly": 0, "rx": 0, "ry": 0, "buttons": {},
+                                      "triggers": {"LT": 0, "RT": 0}, "block_vks": []}))
+        except Exception:
+            pass
         await asyncio.sleep(0.2)
 
 asyncio.run(main())

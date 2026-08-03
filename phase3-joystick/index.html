@@ -99,6 +99,11 @@
     </label>
     <button class="gray" onclick="startWizard()">🧙 Asistente: aprende las teclas del perfil</button>
   </div>
+  <div id="modWarn" style="display:none;font-size:12px;color:#d29922;margin-top:4px">
+    ⚠️ Hay modificadores (Shift/Ctrl/Alt) mapeados con el bloqueo activo: el hook los consumirá
+    en TODO el sistema, no solo en el juego (ej: Ctrl+C dejará de funcionar). Desactiva el
+    bloqueo 🚫 o quita esos modificadores si necesitas usarlos fuera del juego.
+  </div>
 </div>
 
 <!-- ── Editor del mando ── -->
@@ -193,6 +198,7 @@ let wsConnected = false;
 let learnTarget = null;          // botón del mando esperando asignación
 let learnAnyMode = false;        // modo "aprender tecla suelta"
 let wizardPending = null;        // tecla que el asistente espera aprender (e.code)
+let learnReadyAt = 0;            // timestamp tras el cual se aceptan pulsaciones (espera desbloqueo del hook)
 let lastKeyDown = { code: null, t: 0 };   // para emparejar keydown + reporte HID
 let state = {};                  // keyName (e.code) → presión 0..1
 let btnState = {};               // botón mando → presionado (histeresis)
@@ -360,6 +366,10 @@ function vksFor(code) {
     Space:[0x20], Enter:[0x0D], Tab:[0x09], Backspace:[0x08], Escape:[0x1B], CapsLock:[0x14],
     ArrowUp:[0x26], ArrowDown:[0x28], ArrowLeft:[0x25], ArrowRight:[0x27],
     Home:[0x24], End:[0x23], PageUp:[0x21], PageDown:[0x22], Insert:[0x2D], Delete:[0x2E],
+    // Modificadores: se envía el VK genérico (0x10) Y el específico (0xA0..0xA5).
+    // El hook WH_KEYBOARD_LL reporta 0x10 en unos sistemas y 0xA0 en otros;
+    // cubrir ambos garantiza el bloqueo siempre. Efecto colateral (documentado):
+    // mapear un Shift bloquea los DOS shifts — que es lo deseado para un mando.
     ShiftLeft:[0x10,0xA0], ShiftRight:[0x10,0xA1],
     ControlLeft:[0x11,0xA2], ControlRight:[0x11,0xA3],
     AltLeft:[0x12,0xA4], AltRight:[0x12,0xA5],
@@ -475,6 +485,9 @@ function startLearn(padButton) {
   const slot = $('slot' + padButton) || $('btn' + padButton);
   slot.classList.add('learning');
   lastKeyDown = { code: null, t: 0 };
+  // el desbloqueo de teclas viaja por WebSocket al daemon: esperar un poco
+  // antes de aceptar la primera pulsación (si no, el hook viejo la consume)
+  learnReadyAt = performance.now() + 120;
   st(`⌨️ Presiona la tecla física para asignar a <b>${padButton}</b>... (clic derecho en el control para cancelar)`, 'warn');
 }
 
@@ -491,12 +504,14 @@ function learnAnyKey() {
   if (!device) { st('⚠️ Conecta el teclado primero.'); return; }
   cancelLearn();
   learnAnyMode = true;
+  learnReadyAt = performance.now() + 120;  // esperar desbloqueo del hook
   st('⌨️ Presiona CUALQUIER tecla del teclado para aprenderla... (clic derecho para salir)', 'warn');
 }
 
 // Emparejar: window keydown (nombre estándar) + reporte HID (código del vendor)
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (performance.now() < learnReadyAt) return;  // aún en ventana de desbloqueo
   lastKeyDown = { code: e.code, t: performance.now() };
 });
 
@@ -505,9 +520,9 @@ window.addEventListener('contextmenu', e => {
 });
 
 function tryLearnPair(hidCode) {
-  // hay un keydown reciente → emparejar
+  // hay un keydown reciente → emparejar (ventana generosa: 800 ms)
   const dt = performance.now() - lastKeyDown.t;
-  if (lastKeyDown.code && dt < 400) {
+  if (lastKeyDown.code && dt < 800) {
     const name = lastKeyDown.code;
     KEYMAP[hidCode] = name;
     lastKeyDown = { code: null, t: 0 };
@@ -704,6 +719,12 @@ function computeBlockVks() {
   Object.values(currentProfile.botones).forEach(add);
   // gatillos
   Object.values(currentProfile.gatillos).forEach(add);
+  // advertencia de modificadores (Shift/Ctrl/Alt) bloqueados a nivel sistema
+  const mappedMods = [...vks].filter(v => [0x10,0x11,0x12].includes(v));
+  const modWarn = $('modWarn');
+  if (modWarn) {
+    modWarn.style.display = (vks.size && mappedMods.length) ? 'block' : 'none';
+  }
   return [...vks];
 }
 
@@ -768,8 +789,13 @@ async function startWizard() {
     st(`🧙 <b>${i+1}/${missing.length}</b> — Presiona la tecla <b>${friendly(want)}</b>...`, 'warn');
     const ok = await new Promise(resolve => {
       wizardPending = want;
+      // mismo retardo que el aprendizaje manual: el desbloqueo (block_vks=[])
+      // viaja por WebSocket al daemon; sin esperar, el hook viejo consumiría
+      // la tecla y el keydown nunca llegaría al navegador.
+      learnReadyAt = performance.now() + 120;
       const handler = e => {
         if (e.repeat) return;
+        if (performance.now() < learnReadyAt) return;
         if (e.code === want) {
           lastKeyDown = { code: want, t: performance.now() };
         }

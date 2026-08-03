@@ -93,7 +93,10 @@ class KeyBlocker:
     def __init__(self):
         self.enabled = True
         self._lock = threading.Lock()
-        self._vks = set(DEFAULT_BLOCK_VKS)
+        # ¡No bloquear nada al arrancar! El bloqueo solo se activa cuando la
+        # página manda block_vks. Si arrancara con WASD, el hook consumiría
+        # esas teclas aunque no haya ningún cliente conectado.
+        self._vks = frozenset()
         self._hook = None
         self._proc = None
         self._thread = None
@@ -135,9 +138,14 @@ class KeyBlocker:
             self._thread = None
 
     def set_vks(self, vk_list):
-        """Reemplaza la lista de teclas a bloquear (VK codes)."""
+        """Reemplaza la lista de teclas a bloquear (VK codes).
+
+        Se guarda como frozenset (inmutable) para que el callback del hook
+        pueda leer la referencia sin lock: la asignación de la referencia es
+        atómica en CPython y el objeto nunca se muta in-place.
+        """
         with self._lock:
-            self._vks = set(int(v) for v in vk_list) if vk_list else set()
+            self._vks = frozenset(int(v) for v in vk_list) if vk_list else frozenset()
             print(f"[*] bloqueando {len(self._vks)} VK: "
                   f"{[hex(v) for v in sorted(self._vks)]}", flush=True)
 
@@ -252,13 +260,39 @@ class VirtualPad:
             if "ry" in msg:
                 self.ry = self._clamp1(msg["ry"])
             if "buttons" in msg:
-                self.buttons = dict(msg["buttons"])
+                # MERGE en vez de reemplazo: si un botón no viene en el mensaje,
+                # se marca 0 (suelto) para que el mando no quede "pegado".
+                new_buttons = dict(msg["buttons"])
+                for name in list(self.buttons.keys()):
+                    if name not in new_buttons:
+                        new_buttons[name] = 0
+                self.buttons = new_buttons
             if "triggers" in msg:
                 self.triggers.update({k: float(v) for k, v in msg["triggers"].items()})
 
 
 # ── WebSocket handler ──────────────────────────────────────────────────
+# Solo UN cliente a la vez: dos pestañas/navegadores enviarían estados
+# mezclados al mismo mando virtual. Si llega un segundo cliente, se
+# desconecta al anterior (dejando el mando centrado).
+_active_ws = None
+_active_ws_lock = threading.Lock()
+
+
 async def handler(ws, pad: VirtualPad, blocker: KeyBlocker):
+    global _active_ws
+    # ¡OJO! el close() va FUERA del lock: si se hace dentro y el handler
+    # anterior corre su finally intentando tomar el mismo lock, el event
+    # loop se bloquea (deadlock) y el daemon deja de aceptar conexiones.
+    with _active_ws_lock:
+        prev = _active_ws
+        _active_ws = ws
+    if prev is not None and prev is not ws:
+        print("[!] segundo cliente detectado — cerrando el anterior", flush=True)
+        try:
+            await prev.close()
+        except Exception:
+            pass
     print(f"[+] cliente conectado: {ws.remote_address}", flush=True)
     try:
         async for raw in ws:
@@ -280,6 +314,9 @@ async def handler(ws, pad: VirtualPad, blocker: KeyBlocker):
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
+        with _active_ws_lock:
+            if _active_ws is ws:
+                _active_ws = None
         # al desconectarse: centrar todo, desbloquear teclas
         with pad._lock:
             pad.lx, pad.ly = 0.0, 0.0
