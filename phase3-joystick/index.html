@@ -149,10 +149,12 @@ async function connect() {
       ]
     });
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
-    // Elegir el dispositivo que tenga la colección de presión (usagePage 0xFFFF).
-    // Chrome puede listar varias interfaces del mismo teclado (MI_00, MI_01, MI_02)
-    // y devices[0] NO siempre es la correcta — buscar explícitamente.
+    // Elegir el dispositivo con la colección de presión EXACTA:
+    // usagePage 0xFFFF Y usage 1 (el Dev 0 tiene 0xFFFF pero usage 2 —
+    // no filtrar solo por usagePage, hay DOS interfaces 0xFFFF).
     device = devices.find(d =>
+      (d.collections || []).some(c => c.usagePage === 0xFFFF && c.usage === 1)
+    ) || devices.find(d =>
       (d.collections || []).some(c => c.usagePage === 0xFFFF)
     ) || devices[0];
     await device.open();

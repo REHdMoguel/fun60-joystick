@@ -138,6 +138,8 @@ async function connect() {
     });
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
     device = devices.find(d =>
+      (d.collections || []).some(c => c.usagePage === 0xFFFF && c.usage === 1)
+    ) || devices.find(d =>
       (d.collections || []).some(c => c.usagePage === 0xFFFF)
     ) || devices[0];
     await device.open();
