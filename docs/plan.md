@@ -79,9 +79,23 @@ App que lee W/A/S/D y muestra el valor analógico normalizado 0.00–1.00 en pan
 - [x] Nota: la Flydigi CD2 del usuario aparece en otro slot de XInput (con drift) — no confundir
 - [ ] **Pendiente usuario:** probar en un juego real (¿el juego detecta el mando?)
 
-### Fase 4 — App final (PENDIENTE)
-Interfaz con perfiles por juego, zona muerta, sensibilidad, teclas configurables.
-- Ideas: selector de stick (left/right ya implementado), zona muerta configurable, curvas de sensibilidad, botones WASD→A/B/X/Y, perfil por juego, auto-arranque del daemon.
+### Fase 4 — Mando completo: mapeo total + perfiles + editor visual ✅ COMPLETADA (2026-08-03)
+Todo el mando Xbox 360 en el teclado: 2 sticks analógicos, 14 botones, 2 gatillos, bloqueo dinámico a nivel sistema y perfiles por juego.
+
+**Entregables:**
+- [x] `phase3-daemon/joy_daemon.py` — protocolo extendido: `lx/ly/rx/ry` (sticks duales), `buttons` (14 botones), `triggers` (gatillos analógicos LT/RT), `block_vks` (bloqueo DINÁMICO de teclas por VK code)
+- [x] `phase3-joystick/index.html` — reescrito como **editor visual del mando**: clic en un botón del diagrama → presionas la tecla física → se asigna (aprendizaje automático del código HID)
+- [x] **Keymap aprendible**: solo W/A/S/D venían conocidos; el resto de códigos se aprenden emparejando el keydown del navegador (`e.code`) con el reporte HID del vendor — funciona para CUALQUIER tecla
+- [x] **Asistente 🧙**: recorre las teclas que usa el perfil actual y las aprende una a una
+- [x] **Perfiles por juego** (Mando completo / Shooter / Aventura): guardados en localStorage, exportar/importar JSON
+- [x] Gatillos analógicos con rampa (sube ~150 ms, baja ~80 ms)
+- [x] Histeresis en botones (presiona al umbral, suelta al 60%)
+- [x] Bloqueo dinámico: solo bloquea teclas YA aprendidas y mapeadas; se desactiva durante el aprendizaje
+- [x] Verificación: daemon 12/12 pruebas XInput (sticks duales, botones, gatillos, bloqueo) + lógica página 33/33 (node)
+- [ ] **Pendiente usuario:** probar en Hades con el perfil Aventura + bloqueo activado
+- [ ] **Pendiente Fase 4A:** descriptor JSON por modelo de teclado (`decodeReport()` ya está aislado y listo)
+
+**Nota Fase 4A (genérico):** `decodeReport(bytes)` en la página es el único punto FUN60-específico que queda. Para soportar otros teclados magnéticos basta con mover ese decodificador a un descriptor JSON (RID, header, bits de presión, mapa de códigos) — la UI de aprendizaje ya es universal.
 
 ---
 

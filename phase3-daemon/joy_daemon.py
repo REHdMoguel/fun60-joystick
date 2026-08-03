@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FUN60 Joystick — Daemon puente WebSocket → Mando virtual Xbox 360 (Fase 3)
+FUN60 Joystick — Daemon puente WebSocket → Mando virtual Xbox 360 (Fase 4)
 
-Recibe valores de eje normalizados [-1, 1] por WebSocket y los inyecta
-en un mando Xbox 360 virtual vía vgamepad (ViGEmBus).
+Recibe el estado completo del mando por WebSocket y lo inyecta en un
+mando Xbox 360 virtual vía vgamepad (ViGEmBus):
 
-Además, puede BLOQUEAR las teclas físicas W/A/S/D a nivel de sistema
-(low-level keyboard hook) para que el juego solo reciba el mando virtual
+    {
+      "lx": 0.42, "ly": -0.78,            # stick izquierdo  [-1, 1]
+      "rx": 0.10, "ry": 0.00,             # stick derecho     [-1, 1]
+      "buttons": {"A": 1, "LEFT_SHOULDER": 0, ...},
+      "triggers": {"LT": 0.75, "RT": 0.0},  # gatillos analógicos [0, 1]
+      "block_vks": [0x45, 0x20, ...]        # teclas a bloquear a nivel sistema
+    }
+
+El bloqueo es un low-level keyboard hook que CONSUME las teclas indicadas
+(por su Virtual Key code) para que el juego solo reciba el mando virtual
 y no la tecla real — el resto del teclado sigue funcionando normal.
-
-Protocolo (JSON, uno por mensaje):
-    {"x": 0.42, "y": -0.78}                 # update de ejes
-    {"mode": "left"} | {"mode": "right"}    # qué stick controlar
-    {"block_keys": true|false}              # activar/desactivar bloqueo WASD
 
 Requiere:  pip install vgamepad websockets
            ViGEmBus instalado (driver kernel)
@@ -44,9 +47,9 @@ WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
 WM_QUIT = 0x0012
 
-# VK codes de W/A/S/D
+# VK codes de teclas genéricas (los específicos llegan por WebSocket)
 VK_W, VK_A, VK_S, VK_D = 0x57, 0x41, 0x53, 0x44
-BLOCK_KEYS = {VK_W, VK_A, VK_S, VK_D}
+DEFAULT_BLOCK_VKS = [VK_W, VK_A, VK_S, VK_D]
 
 _user32 = ctypes.windll.user32
 
@@ -81,11 +84,16 @@ _user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT,
 
 
 class KeyBlocker:
-    """Intercepta y consume W/A/S/D a nivel de sistema mientras enabled."""
+    """Intercepta y consume una lista DINÁMICA de VK codes a nivel de sistema.
+
+    La lista se actualiza en caliente desde la página (block_vks).
+    Vacía → no se bloquea nada.
+    """
 
     def __init__(self):
-        self.enabled = False
+        self.enabled = True
         self._lock = threading.Lock()
+        self._vks = set(DEFAULT_BLOCK_VKS)
         self._hook = None
         self._proc = None
         self._thread = None
@@ -93,7 +101,7 @@ class KeyBlocker:
     def _callback(self, nCode, wParam, lParam):
         if nCode >= 0 and self.enabled:
             kbd = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-            if kbd.vkCode in BLOCK_KEYS:
+            if kbd.vkCode in self._vks:
                 return 1  # consumir el evento: la tecla nunca llega a las apps
         return _user32.CallNextHookEx(self._hook, nCode, wParam, lParam)
 
@@ -104,7 +112,7 @@ class KeyBlocker:
         if not self._hook:
             print("[!] No se pudo instalar el hook de teclado", flush=True)
             return
-        print("[*] Hook de teclado instalado (bloquea W/A/S/D)", flush=True)
+        print("[*] Hook de teclado instalado (bloqueo dinámico)", flush=True)
         msg = wintypes.MSG()
         while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
             _user32.TranslateMessage(ctypes.byref(msg))
@@ -126,6 +134,13 @@ class KeyBlocker:
             self._thread.join(timeout=2)
             self._thread = None
 
+    def set_vks(self, vk_list):
+        """Reemplaza la lista de teclas a bloquear (VK codes)."""
+        with self._lock:
+            self._vks = set(int(v) for v in vk_list) if vk_list else set()
+            print(f"[*] bloqueando {len(self._vks)} VK: "
+                  f"{[hex(v) for v in sorted(self._vks)]}", flush=True)
+
     def set_enabled(self, flag):
         with self._lock:
             self.enabled = bool(flag)
@@ -135,19 +150,35 @@ class KeyBlocker:
 # Patrón "último valor gana" (como un mando real):
 #   - handle() solo actualiza valores en memoria (nunca toca el driver)
 #   - un hilo dedicado aplica el estado al mando a 250 Hz
-#   → aunque lleguen ráfagas de mensajes con el CPU saturado, el stick
+#   → aunque lleguen ráfagas de mensajes con el CPU saturado, el mando
 #     siempre refleja el ÚLTIMO estado, sin acumular retraso.
 UPDATE_HZ = 250
+
+# Nombres canónicos de botones XInput (sufijo de XUSB_GAMEPAD_*)
+BUTTON_ENUM = {  # nombre amigable → sufijo de enumeración XUSB
+    "A": "A", "B": "B", "X": "X", "Y": "Y",
+    "LB": "LEFT_SHOULDER", "RB": "RIGHT_SHOULDER",
+    "LS": "LEFT_THUMB", "RS": "RIGHT_THUMB",
+    "START": "START", "BACK": "BACK", "GUIDE": "GUIDE",
+    "DPAD_UP": "DPAD_UP", "DPAD_DOWN": "DPAD_DOWN",
+    "DPAD_LEFT": "DPAD_LEFT", "DPAD_RIGHT": "DPAD_RIGHT",
+}
 
 
 class VirtualPad:
     def __init__(self):
         self.pad = vg.VX360Gamepad()
         self._lock = threading.Lock()
-        self.mode = "left"          # "left" | "right"
-        self.x = 0.0
+        # sticks: modo compat (backwards) + dual nativo
+        self.mode = "left"          # "left" | "right" (solo usado si llegan x/y)
+        self.x = 0.0                # eje legacy (stick según mode)
         self.y = 0.0
-        self.buttons = {}
+        self.lx = 0.0
+        self.ly = 0.0
+        self.rx = 0.0
+        self.ry = 0.0
+        self.buttons = {}           # {"A": 1, "LB": 0, ...}
+        self.triggers = {"LT": 0.0, "RT": 0.0}
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -168,13 +199,18 @@ class VirtualPad:
 
     def _apply_locked(self):
         p = self.pad
-        if self.mode == "left":
-            p.left_joystick_float(x_value_float=self.x, y_value_float=self.y)
-        else:
-            p.right_joystick_float(x_value_float=self.x, y_value_float=self.y)
-        # botones opcionales: {"A": 1, "RB": 0, ...}
+        # sticks: dual nativo si llegó rx/ry; si no, legacy x/y según mode
+        p.left_joystick_float(x_value_float=self.lx, y_value_float=self.ly)
+        p.right_joystick_float(x_value_float=self.rx, y_value_float=self.ry)
+        # gatillos analógicos
+        p.left_trigger_float(value_float=max(0.0, min(1.0, self.triggers.get("LT", 0.0))))
+        p.right_trigger_float(value_float=max(0.0, min(1.0, self.triggers.get("RT", 0.0))))
+        # botones digitales
         for name, val in self.buttons.items():
-            btn = getattr(vg.XUSB_BUTTON, f"XUSB_GAMEPAD_{name.upper()}", None)
+            suffix = BUTTON_ENUM.get(name)
+            if suffix is None:
+                continue
+            btn = getattr(vg.XUSB_BUTTON, f"XUSB_GAMEPAD_{suffix}", None)
             if btn is None:
                 continue
             if val:
@@ -190,17 +226,35 @@ class VirtualPad:
         self._stop.set()
         self._thread.join(timeout=2)
 
+    def _clamp1(self, v):
+        return max(-1.0, min(1.0, float(v)))
+
     def handle(self, msg: dict):
         # SOLO actualizar estado en memoria — el hilo aplica a 250 Hz
         with self._lock:
-            if "x" in msg:
-                self.x = max(-1.0, min(1.0, float(msg["x"])))
-            if "y" in msg:
-                self.y = max(-1.0, min(1.0, float(msg["y"])))
+            # modo legacy: x/y van al stick indicado por "mode"
+            if "x" in msg or "y" in msg:
+                self.x = self._clamp1(msg.get("x", self.x))
+                self.y = self._clamp1(msg.get("y", self.y))
+                if self.mode == "left":
+                    self.lx, self.ly = self.x, self.y
+                else:
+                    self.rx, self.ry = self.x, self.y
             if "mode" in msg:
                 self.mode = msg["mode"]
+            # sticks duales nativos (la página nueva los manda siempre)
+            if "lx" in msg:
+                self.lx = self._clamp1(msg["lx"])
+            if "ly" in msg:
+                self.ly = self._clamp1(msg["ly"])
+            if "rx" in msg:
+                self.rx = self._clamp1(msg["rx"])
+            if "ry" in msg:
+                self.ry = self._clamp1(msg["ry"])
             if "buttons" in msg:
-                self.buttons = msg["buttons"]
+                self.buttons = dict(msg["buttons"])
+            if "triggers" in msg:
+                self.triggers.update({k: float(v) for k, v in msg["triggers"].items()})
 
 
 # ── WebSocket handler ──────────────────────────────────────────────────
@@ -213,18 +267,27 @@ async def handler(ws, pad: VirtualPad, blocker: KeyBlocker):
             except json.JSONDecodeError:
                 continue
             # control del bloqueo de teclas
-            if "block_keys" in msg:
-                blocker.set_enabled(bool(msg["block_keys"]))
-                print(f"[*] bloqueo WASD: {'ON' if msg['block_keys'] else 'OFF'}", flush=True)
+            if "block_vks" in msg:
+                blocker.set_vks(msg["block_vks"])
+            elif "block_keys" in msg:  # compat: bool on/off
+                if msg["block_keys"]:
+                    blocker.set_enabled(True)
+                    if not blocker._vks:
+                        blocker.set_vks(DEFAULT_BLOCK_VKS)
+                else:
+                    blocker.set_vks([])
             pad.handle(msg)
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        # al desconectarse: centrar stick y desbloquear teclas
+        # al desconectarse: centrar todo, desbloquear teclas
         with pad._lock:
-            pad.x, pad.y = 0.0, 0.0
-        blocker.set_enabled(False)
-        print("[-] cliente desconectado, stick centrado, WASD desbloqueado", flush=True)
+            pad.lx, pad.ly = 0.0, 0.0
+            pad.rx, pad.ry = 0.0, 0.0
+            pad.buttons = {}
+            pad.triggers = {"LT": 0.0, "RT": 0.0}
+        blocker.set_vks([])
+        print("[-] cliente desconectado, mando centrado, teclas desbloqueadas", flush=True)
 
 
 async def main():
@@ -233,7 +296,7 @@ async def main():
     blocker = KeyBlocker()
     blocker.start()
     print(f"[*] FUN60 Joystick daemon en ws://{HOST}:{PORT} — Ctrl+C para salir", flush=True)
-    print("[*] El bloqueo de W/A/S/D se activa cuando un cliente lo pide", flush=True)
+    print("[*] Bloqueo dinámico de teclas: la página manda qué VK bloquear", flush=True)
     try:
         async with websockets.serve(lambda ws: handler(ws, pad, blocker), HOST, PORT):
             await asyncio.Future()  # corre para siempre

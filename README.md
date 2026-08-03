@@ -1,11 +1,12 @@
 # 🎮 FUN60 Joystick
 
-Convierte un **teclado magnético MonsGeek FUN60 Ultra TMR** en un **joystick analógico virtual**
-(controlador Xbox 360) usando la presión real de las teclas W/A/S/D.
+Convierte un **teclado magnético MonsGeek FUN60 Ultra TMR** en un **mando Xbox 360 virtual completo**
+(2 sticks analógicos + 14 botones + 2 gatillos) usando la presión real de las teclas.
 
 > Los switches magnéticos (TMR) del FUN60 detectan la **profundidad de pulsación** de cada tecla.
 > Este proyecto lee ese valor analógico por WebHID y lo convierte en ejes de stick
-> (X = D−A, Y = W−S) con circle-clamp, inyectándolos en un mando Xbox 360 virtual vía ViGEmBus.
+> (X = D−A, Y = W−S) con circle-clamp, botones y gatillos, inyectándolos en un mando
+> Xbox 360 virtual vía ViGEmBus.
 
 ---
 
@@ -18,16 +19,17 @@ y esta herramienta, **la fuerza con la que presionas W controla cuánto se mueve
 - Presionas W **a fondo** → corre a máxima velocidad
 - Presionas W **y D a la vez** → diagonal perfecta (como un mando de verdad)
 
-Es ideal para juegos que se juegan mejor con mando (Hades, Forza, RPGs, etc.)
-pero donde prefieres usar tu teclado.
-
 **Características:**
 - 🕹️ Joystick analógico real (profundidad de pulsación = magnitud del stick)
-- 🚫 **Bloqueo selectivo de WASD**: W/A/S/D se bloquean solo para el juego (el resto
-  del teclado sigue funcionando normal — sin afectar nada más)
-- 🎯 Stick izquierdo o derecho seleccionable (útil para cámara en shooters)
+- 🎮 **Mando completo**: mapea cualquier tecla a los 14 botones (A/B/X/Y, LB/RB, D-pad...)
+  y a los 2 gatillos analógicos (con rampa, como un gatillo de verdad)
+- 🖱️ **Perfil "Shooter"**: el mouse apunta y el teclado solo envía botones — ideal para FPS
+- 🧙 **Asistente de aprendizaje**: presiona las teclas una vez y la app recuerda sus códigos
+- 📁 **Perfiles por juego** (guardar / exportar / importar)
+- 🚫 **Bloqueo selectivo**: las teclas mapeadas se bloquean solo para el juego (el resto
+  del teclado sigue funcionando normal)
 - ⭕ Circle-clamp (diagonales correctas, sin el "cuadrado" de los teclados digitales)
-- 🖥️ Pantalla con el stick en vivo para verificar antes de jugar
+- 🖥️ Diagrama del mando en vivo para verificar antes de jugar
 
 ---
 
@@ -80,8 +82,12 @@ En la página web que se abrió:
 
 1. Clic en **🔌 Conectar teclado** → elige tu FUN60 en la ventana que aparece
 2. Clic en **🔗 Conectar al daemon**
-3. Deja activado el checkbox **🚫 Bloquear teclas W/A/S/D**
-4. ¡Abre tu juego y a jugar! 🎮
+3. (Primera vez) clic en **🧙 Asistente** y presiona las teclas que te pida —
+   la app aprende los códigos de tu teclado y los recuerda
+4. Elige el perfil: **Aventura** (RPGs como Hades), **Shooter** (el mouse apunta),
+   o **Mando completo** (WASD + flechas como stick derecho)
+5. Deja activado el checkbox **🚫 Bloquear teclas mapeadas**
+6. ¡Abre tu juego y a jugar! 🎮
 
 > ⚠️ **Importante:** cierra la página del driver web de MonsGeek (`app.monsgeek.com`)
 > mientras juegas — el teclado solo puede ser usado por un programa a la vez.
@@ -96,8 +102,19 @@ El mando virtual desaparece y todo vuelve a la normalidad.
 ## ❓ Preguntas frecuentes (FAQ)
 
 **¿Puedo escribir con el teclado mientras el bloqueo está activado?**
-Las teclas W/A/S/D no escribirán mientras el bloqueo esté activado (van al mando).
-El resto del teclado funciona normal. Desmarca el checkbox 🚫 para desactivar el bloqueo.
+Las teclas mapeadas (ej: W/A/S/D o las que asignaste a botones) no escribirán mientras
+el bloqueo esté activado (van al mando). El resto del teclado funciona normal.
+Desmarca el checkbox 🚫 para desactivar el bloqueo.
+
+**¿Qué hace el "Asistente" (🧙)?**
+Enseña a la app los códigos internos de tu teclado: te pide presionar cada tecla una vez
+y la recuerda. Se usa la primera vez y cada vez que agregues teclas nuevas al mapeo.
+Los códigos se guardan en el navegador (no salen a internet).
+
+**¿Cómo cambio qué tecla activa el botón A del mando?**
+Clic en el botón **A** del diagrama del mando → presiona la tecla física que quieras.
+Clic derecho sobre un botón quita la asignación. Los ejes de los sticks y los gatillos
+se configuran con los menús desplegables al lado del diagrama.
 
 **¿Esto sirve para cualquier juego?**
 Funciona con cualquier juego que soporte mando Xbox. En juegos **solo para un jugador**
@@ -115,8 +132,8 @@ por mando (no solo teclado). En Windows, escribe `joy.cpl` (Win+R) para ver si e
 "Controlador de Xbox 360" aparece.
 
 **¿Puedo cambiar qué stick controla?**
-Sí — en la página hay un selector 🎯 **Stick: Izquierdo / Derecho**. El izquierdo es
-el de movimiento; el derecho es el de cámara.
+Sí — en la sección 🕹 **Sticks** eliges las teclas de cada eje para el stick izquierdo
+y derecho, y puedes desactivar uno si no lo usas (ej: shooter con mouse).
 
 **¿El teclado se daña por usar la presión?**
 No. Es exactamente para lo que fue diseñado: los switches magnéticos miden presión
@@ -167,8 +184,9 @@ fun60-joystick/
 ├── phase2-lector/           ← prototipo visual del stick (para desarrolladores)
 ├── phase3-daemon/           ← daemon del mando virtual
 │   ├── joy_daemon.py        ← ⭐ el daemon (no tocar a menos que sepas)
-│   └── test_block_fisico.py ← prueba del bloqueo de teclas
-└── phase3-joystick/         ← página web principal
+│   ├── test_protocolo_v4.py ← prueba del protocolo completo (XInput)
+│   └── test_page_logic.js   ← prueba de la lógica de la página (node)
+└── phase3-joystick/         ← página web principal (editor del mando + perfiles)
     └── index.html
 ```
 

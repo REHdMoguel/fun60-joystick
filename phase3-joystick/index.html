@@ -2,63 +2,168 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>FUN60 Joystick — Fase 3: Mando virtual</title>
+<title>FUN60 Joystick — Fase 4: Mando completo</title>
 <style>
-  body { font-family: 'Cascadia Code', Consolas, monospace; background:#111; color:#ddd; padding:16px; max-width:960px; margin:0 auto; }
-  h1 { font-size:18px; color:#7ee787; }
-  button { background:#238636; color:#fff; border:none; padding:10px 16px; font-size:15px; cursor:pointer; border-radius:4px; margin:4px; }
+  :root {
+    --bg:#111; --card:#161b22; --border:#30363d; --fg:#ddd;
+    --green:#3fb950; --blue:#58a6ff; --red:#f85149; --yellow:#d29922;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:'Cascadia Code',Consolas,monospace; background:var(--bg); color:var(--fg); padding:16px; max-width:1000px; margin:0 auto; }
+  h1 { font-size:18px; color:var(--green); }
+  h2 { font-size:14px; color:var(--blue); margin:14px 0 6px; }
+  button { background:#238636; color:#fff; border:none; padding:9px 14px; font-size:14px; cursor:pointer; border-radius:4px; margin:4px; }
   button:disabled { background:#444; cursor:not-allowed; }
   button.blue { background:#1f6feb; }
+  button.gray { background:#30363d; }
+  button.red { background:#a31f34; }
+  select, input { background:#0d1117; color:var(--fg); border:1px solid var(--border); padding:6px; border-radius:4px; font-size:13px; }
   #status { color:#ffa657; margin:10px 0; font-size:14px; min-height:20px; }
-  .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:16px; margin:12px 0; }
-  .cols { display:flex; gap:24px; flex-wrap:wrap; align-items:center; }
-  #stickArea { position:relative; width:280px; height:280px; border:2px solid #30363d; border-radius:50%; background:radial-gradient(circle at 50% 50%, #1c2128 0%, #101418 100%); }
-  #stickDot { position:absolute; width:44px; height:44px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #58a6ff, #1f6feb); left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 0 18px rgba(88,166,255,.6); }
-  .axis { font-size:12px; color:#888; position:absolute; }
-  #lblN { top:4px; left:50%; transform:translateX(-50%); } #lblS { bottom:4px; left:50%; transform:translateX(-50%); }
-  #lblW { left:6px; top:50%; transform:translateY(-50%); } #lblE { right:6px; top:50%; transform:translateY(-50%); }
-  .kb { display:flex; gap:12px; margin:8px 0; flex-wrap:wrap; }
-  .keybox { border:1px solid #555; padding:8px 12px; border-radius:6px; background:#1a1a1a; text-align:center; min-width:110px; }
-  .keybox .k { font-size:20px; font-weight:bold; }
-  .keybox .v { font-size:22px; color:#58a6ff; }
-  .bar { height:8px; background:#222; border-radius:4px; overflow:hidden; margin-top:4px; }
-  .bar > div { height:100%; background:linear-gradient(90deg,#238636,#7ee787); width:0%; transition:width 20ms linear; }
-  #readout { font-size:22px; color:#7ee787; margin:8px 0; min-height:30px; }
-  #log { background:#0a0a0a; border:1px solid #333; height:100px; overflow-y:auto; padding:8px; font-size:11px; white-space:pre; }
-  .ok { color:#3fb950; } .warn { color:#d29922; } .bad { color:#f85149; }
-  .toggle { display:inline-flex; align-items:center; gap:8px; margin:8px 0; font-size:15px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px; margin:10px 0; }
+  .cols { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  .ok { color:var(--green); } .warn { color:#d29922; } .bad { color:var(--red); }
+  .toggle { display:inline-flex; align-items:center; gap:8px; margin:8px 0; font-size:14px; }
+
+  /* ── diagrama del mando ── */
+  .pad { background:#0d1117; border:1px solid var(--border); border-radius:14px; padding:14px 18px; width:560px; max-width:100%; user-select:none; }
+  .pad-row { display:flex; justify-content:space-between; align-items:center; margin:6px 0; }
+  .pad-mid { display:flex; justify-content:space-between; align-items:center; margin:14px 0; }
+  .pad-bottom { display:flex; justify-content:center; gap:40px; margin-top:10px; }
+  .trig { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .trig .slot { width:110px; height:30px; border-radius:8px; background:#1c2128; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; transition:all .1s; }
+  .bump { display:flex; gap:14px; }
+  .bump .slot { width:80px; height:34px; border-radius:8px; background:#1c2128; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; transition:all .1s; }
+  .face { position:relative; width:130px; height:130px; }
+  .face .btn { position:absolute; width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold; cursor:pointer; transition:all .1s; border:2px solid rgba(255,255,255,.25); text-align:center; line-height:1.15; }
+  #btnA { bottom:2px; left:50%; transform:translateX(-50%); background:radial-gradient(circle at 35% 35%, #5fce63, #1e7a24); }
+  #btnB { right:2px; top:50%; transform:translateY(-50%); background:radial-gradient(circle at 35% 35%, #ef6a5e, #a31f34); }
+  #btnX { left:2px; top:50%; transform:translateY(-50%); background:radial-gradient(circle at 35% 35%, #6cb2ff, #1f5fa8); }
+  #btnY { top:2px; left:50%; transform:translateX(-50%); background:radial-gradient(circle at 35% 35%, #f2d04b, #9c7c10); }
+  .dpad { display:grid; grid-template-columns:44px 44px 44px; grid-template-rows:44px 44px 44px; gap:2px; }
+  .dpad .slot { background:#1c2128; border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
+  .stick-box { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .stick-vis { position:relative; width:96px; height:96px; border-radius:50%; border:2px solid var(--border); background:radial-gradient(circle at 50% 50%, #1c2128 0%, #0d1117 100%); }
+  .stick-dot { position:absolute; width:26px; height:26px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #58a6ff, #1f6feb); left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 0 10px rgba(88,166,255,.5); transition:left 16ms linear, top 16ms linear; }
+  .slot.assigned { border-color:#58a6ff; color:#58a6ff; background:#12223b; }
+  .slot.learning { outline:3px solid #f2d04b; animation:pulse 0.8s infinite; }
+  .slot.lit { background:#2ea043; color:#fff; border-color:#3fb950; }
+  @keyframes pulse { 0%,100%{outline-color:#f2d04b;} 50%{outline-color:transparent;} }
+  .slot .k { font-size:13px; font-weight:bold; }
+  .slot .hint { font-size:9px; opacity:.55; }
+
+  /* ── chips de teclas aprendidas ── */
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { background:#1c2128; border:1px solid var(--border); border-radius:12px; padding:3px 10px; font-size:12px; display:inline-flex; align-items:center; gap:6px; }
+  .chip b { color:var(--blue); }
+  .chip code { font-size:10px; color:#888; }
+  .chip .x { cursor:pointer; color:var(--red); font-weight:bold; padding:0 2px; }
+  .chip .x:hover { color:#ff8a80; }
+  .axis-grid { display:grid; grid-template-columns:auto auto; gap:6px 10px; align-items:center; }
+  #readout { font-size:20px; color:var(--green); margin:6px 0; min-height:26px; }
+  #testKey { font-size:22px; font-weight:bold; color:var(--blue); }
+  #log { background:#0a0a0a; border:1px solid #333; height:90px; overflow-y:auto; padding:8px; font-size:11px; white-space:pre; }
 </style>
 </head>
 <body>
-<h1>🎮 FUN60 Joystick — Fase 3: Mando virtual Xbox</h1>
+<h1>🎮 FUN60 Joystick — Fase 4: Mando completo</h1>
 <p><span id="status" class="warn">⏸ Desconectado</span></p>
 <p>
   <button id="btnConnect" onclick="connect()">🔌 Conectar teclado</button>
   <button class="blue" id="btnDaemon" onclick="connectDaemon()">🔗 Conectar al daemon (mando virtual)</button>
+  <span id="wsState" class="warn" style="margin-left:10px">daemon: desconectado</span>
 </p>
 
+<!-- ── Perfil ── -->
 <div class="card">
-  <div class="toggle">
-    <label>🎯 Stick: </label>
-    <select id="stickMode" onchange="setMode()">
-      <option value="left">Izquierdo</option>
-      <option value="right">Derecho</option>
-    </select>
-    <label style="margin-left:16px">
-      <input type="checkbox" id="blockKeys" checked onchange="setBlockKeys()">
-      🚫 Bloquear teclas W/A/S/D (solo llegan al mando)
+  <h2>📁 Perfil</h2>
+  <div class="cols" style="align-items:center">
+    <label>Perfil:
+      <select id="profileSel" onchange="loadProfile()"></select>
     </label>
-    <span id="wsState" class="warn">daemon: desconectado</span>
+    <label>Nombre: <input id="profileName" size="18" onchange="renameProfile()"></label>
+    <button class="blue" onclick="saveProfile()">💾 Guardar</button>
+    <button class="gray" onclick="duplicateProfile()">📋 Duplicar</button>
+    <button class="red" onclick="deleteProfile()">🗑 Eliminar</button>
+    <button class="gray" onclick="exportAll()">📤 Exportar</button>
+    <button class="gray" onclick="document.getElementById('importFile').click()">📥 Importar</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importAll(event)">
   </div>
-  <div class="cols">
-    <div id="stickArea">
-      <div id="stickDot"></div>
-      <span class="axis" id="lblN">N (W)</span><span class="axis" id="lblS">S</span>
-      <span class="axis" id="lblW">W (A)</span><span class="axis" id="lblE">E (D)</span>
+  <div class="cols" style="align-items:center">
+    <div class="toggle">
+      <input type="checkbox" id="blockKeys" checked onchange="setBlockKeys()">
+      🚫 Bloquear teclas mapeadas a nivel sistema (solo llegan al mando)
     </div>
+    <label style="font-size:13px">Sensibilidad botones:
+      <input type="range" id="sens" min="5" max="40" value="15" oninput="sendState(true)" style="vertical-align:middle">
+      <span id="sensVal">15%</span>
+    </label>
+    <button class="gray" onclick="startWizard()">🧙 Asistente: aprende las teclas del perfil</button>
+  </div>
+</div>
+
+<!-- ── Editor del mando ── -->
+<div class="card">
+  <h2>🎮 Editor — clic en un control y presiona la tecla física para asignarla (clic derecho: quitar)</h2>
+  <div class="cols">
+    <div class="pad">
+      <div class="pad-row">
+        <div class="trig"><span style="font-size:10px;color:#888">LT</span><div class="slot" id="slotLT" onclick="startLearn('LT')">—</div></div>
+        <div class="bump">
+          <div class="slot" id="slotLB" onclick="startLearn('LB')">LB —</div>
+          <div class="slot" id="slotRB" onclick="startLearn('RB')">RB —</div>
+        </div>
+        <div class="trig"><span style="font-size:10px;color:#888">RT</span><div class="slot" id="slotRT" onclick="startLearn('RT')">—</div></div>
+      </div>
+      <div class="pad-mid">
+        <div class="dpad">
+          <div></div><div class="slot" id="slotDPAD_UP" onclick="startLearn('DPAD_UP')">▲<br>—</div><div></div>
+          <div class="slot" id="slotDPAD_LEFT" onclick="startLearn('DPAD_LEFT')">◀<br>—</div><div></div><div class="slot" id="slotDPAD_RIGHT" onclick="startLearn('DPAD_RIGHT')">▶<br>—</div>
+          <div></div><div class="slot" id="slotDPAD_DOWN" onclick="startLearn('DPAD_DOWN')">▼<br>—</div><div></div>
+        </div>
+        <div class="stick-box">
+          <div class="stick-vis"><div class="stick-dot" id="dotL"></div></div>
+          <span style="font-size:10px;color:#888">STICK IZQ</span>
+        </div>
+        <div class="stick-box">
+          <div class="stick-vis"><div class="stick-dot" id="dotR"></div></div>
+          <span style="font-size:10px;color:#888">STICK DER</span>
+        </div>
+        <div class="face">
+          <div class="btn" id="btnY" onclick="startLearn('Y')">Y<br>—</div>
+          <div class="btn" id="btnX" onclick="startLearn('X')">X<br>—</div>
+          <div class="btn" id="btnB" onclick="startLearn('B')">B<br>—</div>
+          <div class="btn" id="btnA" onclick="startLearn('A')">A<br>—</div>
+        </div>
+      </div>
+      <div class="pad-bottom">
+        <div class="slot" id="slotBACK" onclick="startLearn('BACK')" style="width:70px;height:26px">BACK —</div>
+        <div class="slot" id="slotLS" onclick="startLearn('LS')" style="width:70px;height:26px">LS —</div>
+        <div class="slot" id="slotRS" onclick="startLearn('RS')" style="width:70px;height:26px">RS —</div>
+        <div class="slot" id="slotSTART" onclick="startLearn('START')" style="width:70px;height:26px">START —</div>
+      </div>
+    </div>
+
     <div style="flex:1;min-width:280px">
-      <div id="readout">X: 0.00  Y: 0.00</div>
-      <div class="kb" id="kb"></div>
+      <h2>🕹 Sticks (ejes analógicos)</h2>
+      <div class="cols">
+        <div>
+          <b style="font-size:13px">Izquierdo</b>
+          <div class="axis-grid" id="axisGridL"></div>
+        </div>
+        <div>
+          <b style="font-size:13px">Derecho</b>
+          <div class="axis-grid" id="axisGridR"></div>
+        </div>
+      </div>
+      <h2>🎚 Gatillos</h2>
+      <div class="cols">
+        <div class="axis-grid" id="trigGrid"></div>
+      </div>
+      <h2>🧪 Teclas aprendidas</h2>
+      <div id="readout">—</div>
+      <button class="gray" onclick="learnAnyKey()">⌨️ Aprender una tecla suelta</button>
+      <button class="red" onclick="clearKeymap()" style="margin-left:6px">🗑 Olvidar todas</button>
+      <div class="chips" id="chips"></div>
     </div>
   </div>
 </div>
@@ -67,81 +172,421 @@
 <div id="log"></div>
 
 <script>
+// ════════════════════════════════════════════════════════════════
+//  Configuración
+// ════════════════════════════════════════════════════════════════
 const VENDOR = 0x3151;
 const PRODUCTS = [0x5029, 0x5028, 0x5025, 0x5021, 0x0001];
 const MAX_PRESSURE = 325;
-const KEYMAP = { 14: 'W', 9: 'A', 15: 'S', 21: 'D' };
 const WS_URL = 'ws://127.0.0.1:8765';
-const state = { W: 0, A: 0, S: 0, D: 0 };
+
+// Nombres de botones del mando (coinciden con BUTTON_ENUM del daemon)
+const PAD_BUTTONS = ['A','B','X','Y','LB','RB','LS','RS','BACK','START','DPAD_UP','DPAD_DOWN','DPAD_LEFT','DPAD_RIGHT','LT','RT'];
+const TRIGGERS = ['LT','RT'];
+
+// ════════════════════════════════════════════════════════════════
+//  Estado
+// ════════════════════════════════════════════════════════════════
 let device = null;
 let ws = null;
 let wsConnected = false;
-let lastSent = { x: 0, y: 0 };
-
+let learnTarget = null;          // botón del mando esperando asignación
+let learnAnyMode = false;        // modo "aprender tecla suelta"
+let wizardPending = null;        // tecla que el asistente espera aprender (e.code)
+let lastKeyDown = { code: null, t: 0 };   // para emparejar keydown + reporte HID
+let state = {};                  // keyName (e.code) → presión 0..1
+let btnState = {};               // botón mando → presionado (histeresis)
+let trigVal = { LT: 0, RT: 0 };  // valor actual de gatillos (rampa)
+let lastSent = null;
 const $ = id => document.getElementById(id);
-const st = (txt, cls='warn') => { $('status').innerHTML = `<span class="${cls}">${txt}</span>`; };
 const log = txt => { const l=$('log'); l.textContent += txt + '\n'; if (l.textContent.length>8000) l.textContent=l.textContent.slice(-6000); l.scrollTop=l.scrollHeight; };
+const st = (txt, cls='warn') => { $('status').innerHTML = `<span class="${cls}">${txt}</span>`; };
 
-function buildBars() {
-  ['W','A','S','D'].forEach(k => {
-    const box = document.createElement('div');
-    box.className = 'keybox';
-    box.id = 'kb_'+k;
-    box.innerHTML = `<div class="k">${k}</div><div class="v">0.00</div><div class="bar"><div id="bar_${k}"></div></div>`;
-    $('kb').appendChild(box);
+// ── KEYMAP aprendido: vendorCode → keyName (e.code) ──
+let KEYMAP = { 14:'KeyW', 9:'KeyA', 15:'KeyS', 21:'KeyD' };
+
+// ════════════════════════════════════════════════════════════════
+//  Perfiles
+// ════════════════════════════════════════════════════════════════
+const PRESETS = {
+  mando_completo: {
+    nombre: 'Mando completo',
+    axes: {
+      left:  { xPos:'KeyD', xNeg:'KeyA', yPos:'KeyW', yNeg:'KeyS', activo:true },
+      right: { xPos:'ArrowRight', xNeg:'ArrowLeft', yPos:'ArrowUp', yNeg:'ArrowDown', activo:true }
+    },
+    botones: { A:'KeyE', B:'KeyQ', X:'Space', Y:'KeyF', LB:'ShiftLeft', RB:'ControlLeft', LS:'KeyC', RS:'KeyV', BACK:'Tab', START:'Escape', DPAD_UP:'Digit1', DPAD_DOWN:'Digit2', DPAD_LEFT:'Digit3', DPAD_RIGHT:'Digit4' },
+    gatillos: { LT:'KeyT', RT:'KeyG' }
+  },
+  shooter: {
+    nombre: 'Shooter (mouse apunta)',
+    axes: {
+      left:  { xPos:'KeyD', xNeg:'KeyA', yPos:'KeyW', yNeg:'KeyS', activo:true },
+      right: { xPos:null, xNeg:null, yPos:null, yNeg:null, activo:false }
+    },
+    botones: { A:'KeyE', B:'KeyQ', X:'Space', Y:'KeyR', LB:'ShiftLeft', RB:'ControlLeft', LS:null, RS:null, BACK:'Tab', START:'Escape', DPAD_UP:'Digit1', DPAD_DOWN:'Digit2', DPAD_LEFT:'Digit3', DPAD_RIGHT:'Digit4' },
+    gatillos: { LT:'KeyT', RT:null }
+  },
+  aventura: {
+    nombre: 'Aventura (Hades)',
+    axes: {
+      left:  { xPos:'KeyD', xNeg:'KeyA', yPos:'KeyW', yNeg:'KeyS', activo:true },
+      right: { xPos:null, xNeg:null, yPos:null, yNeg:null, activo:false }
+    },
+    botones: { A:'KeyE', B:'KeyQ', X:'Space', Y:'KeyF', LB:'ShiftLeft', RB:'ControlLeft', LS:null, RS:null, BACK:'Tab', START:'Escape', DPAD_UP:null, DPAD_DOWN:null, DPAD_LEFT:null, DPAD_RIGHT:null },
+    gatillos: { LT:null, RT:null }
+  }
+};
+
+let profiles = [];
+let currentProfileId = null;
+let currentProfile = null;
+
+function loadProfilesFromStorage() {
+  try { const p = JSON.parse(localStorage.getItem('fun60_profiles_v4')); if (Array.isArray(p)) profiles = p; } catch(e) {}
+  if (!profiles.length) {
+    profiles = Object.entries(PRESETS).map(([id, p]) => ({ id, ...p }));
+  }
+  currentProfileId = localStorage.getItem('fun60_current_v4') || profiles[0].id;
+  if (!profiles.find(p => p.id === currentProfileId)) currentProfileId = profiles[0].id;
+  currentProfile = profiles.find(p => p.id === currentProfileId);
+  try { const k = JSON.parse(localStorage.getItem('fun60_keymap_v4')); if (k && typeof k === 'object') KEYMAP = k; } catch(e) {}
+}
+
+function saveProfile() {
+  if (!currentProfile) return;
+  $('profileName').value = currentProfile.nombre || currentProfile.id;
+  currentProfile.nombre = $('profileName').value;
+  localStorage.setItem('fun60_profiles_v4', JSON.stringify(profiles));
+  localStorage.setItem('fun60_current_v4', currentProfileId);
+  localStorage.setItem('fun60_keymap_v4', JSON.stringify(KEYMAP));
+  log('💾 Perfil guardado: ' + currentProfile.nombre);
+  fillProfileSel(); renderPad();
+}
+
+function fillProfileSel() {
+  const sel = $('profileSel');
+  sel.innerHTML = profiles.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+  sel.value = currentProfileId;
+  $('profileName').value = currentProfile ? currentProfile.nombre : '';
+}
+
+function loadProfile() {
+  currentProfileId = $('profileSel').value;
+  currentProfile = profiles.find(p => p.id === currentProfileId);
+  $('profileName').value = currentProfile.nombre;
+  renderPad(); renderAxisGrids(); renderTrigGrid();
+  sendState(true);
+}
+
+function duplicateProfile() {
+  const copy = JSON.parse(JSON.stringify(currentProfile));
+  copy.id = currentProfile.id + '_copia_' + Date.now();
+  copy.nombre = currentProfile.nombre + ' (copia)';
+  profiles.push(copy);
+  currentProfileId = copy.id; currentProfile = copy;
+  fillProfileSel(); renderPad(); renderAxisGrids(); renderTrigGrid();
+  saveProfile();
+}
+
+function deleteProfile() {
+  if (profiles.length <= 1) { alert('No puedes eliminar el único perfil.'); return; }
+  if (!confirm('¿Eliminar perfil "' + currentProfile.nombre + '"?')) return;
+  profiles = profiles.filter(p => p.id !== currentProfileId);
+  currentProfileId = profiles[0].id; currentProfile = profiles[0];
+  fillProfileSel(); renderPad(); renderAxisGrids(); renderTrigGrid();
+  saveProfile();
+}
+
+function renameProfile() { saveProfile(); }
+
+function exportAll() {
+  const data = JSON.stringify({ keymap: KEYMAP, profiles, current: currentProfileId }, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
+  a.download = 'fun60-joystick-perfil.json';
+  a.click();
+  log('📤 Configuración exportada.');
+}
+
+function importAll(ev) {
+  const f = ev.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (d.keymap) KEYMAP = d.keymap;
+      if (Array.isArray(d.profiles) && d.profiles.length) {
+        profiles = d.profiles;
+        currentProfileId = d.current && profiles.find(p=>p.id===d.current) ? d.current : profiles[0].id;
+        currentProfile = profiles.find(p=>p.id===currentProfileId);
+      }
+      saveProfile(); renderPad(); renderAxisGrids(); renderTrigGrid();
+      log('📥 Configuración importada correctamente.');
+    } catch(e) { alert('Archivo inválido: ' + e.message); }
+  };
+  r.readAsText(f);
+  ev.target.value = '';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Nombres de teclas y VK codes (para el bloqueo)
+// ════════════════════════════════════════════════════════════════
+const FRIENDLY = {
+  Space:'ESPACIO', Enter:'ENTER', Tab:'TAB', Backspace:'RETRO', Escape:'ESC', CapsLock:'BLOQ MAY',
+  ShiftLeft:'SHIFT', ShiftRight:'SHIFT', ControlLeft:'CTRL', ControlRight:'CTRL',
+  AltLeft:'ALT', AltRight:'ALT', MetaLeft:'WIN', MetaRight:'WIN',
+  ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→',
+  Home:'INICIO', End:'FIN', PageUp:'REPAG', PageDown:'AVPAG', Insert:'INS', Delete:'SUPR',
+  Minus:'-', Equal:'=', BracketLeft:'[', BracketRight:']', Backslash:'\\', Semicolon:';',
+  Quote:"'", Comma:',', Period:'.', Slash:'/', Backquote:'`', IntlBackslash:'<',
+};
+function friendly(code) {
+  if (!code) return '—';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (/^F\d+$/.test(code)) return code;
+  if (code.startsWith('Numpad')) return 'NUM' + code.slice(6);
+  return FRIENDLY[code] || code;
+}
+
+function vksFor(code) {
+  if (!code) return [];
+  if (code.startsWith('Key')) return [0x41 + (code.charCodeAt(3) - 65)];
+  if (code.startsWith('Digit')) return [0x30 + (+code.slice(5))];
+  if (/^F\d+$/.test(code)) { const n = +code.slice(1); if (n >= 1 && n <= 24) return [0x6F + n]; }
+  if (code.startsWith('Numpad')) { const n = +code.slice(6); if (n <= 9) return [0x60 + n]; }
+  const map = {
+    Space:[0x20], Enter:[0x0D], Tab:[0x09], Backspace:[0x08], Escape:[0x1B], CapsLock:[0x14],
+    ArrowUp:[0x26], ArrowDown:[0x28], ArrowLeft:[0x25], ArrowRight:[0x27],
+    Home:[0x24], End:[0x23], PageUp:[0x21], PageDown:[0x22], Insert:[0x2D], Delete:[0x2E],
+    ShiftLeft:[0x10,0xA0], ShiftRight:[0x10,0xA1],
+    ControlLeft:[0x11,0xA2], ControlRight:[0x11,0xA3],
+    AltLeft:[0x12,0xA4], AltRight:[0x12,0xA5],
+    Minus:[0xBD], Equal:[0xBB], BracketLeft:[0xDB], BracketRight:[0xDD], Backslash:[0xDC],
+    Semicolon:[0xBA], Quote:[0xDE], Comma:[0xBC], Period:[0xBE], Slash:[0xBF], Backquote:[0xC0], IntlBackslash:[0xE2],
+  };
+  return map[code] || [];
+}
+
+// ── lista estándar de teclas para los selects de ejes ──
+function standardKeys() {
+  const keys = [];
+  for (let i = 0; i < 26; i++) keys.push('Key' + String.fromCharCode(65+i));
+  for (let i = 0; i < 10; i++) keys.push('Digit' + i);
+  for (let i = 1; i <= 12; i++) keys.push('F' + i);
+  return keys.concat(['Space','Enter','Tab','Escape','ShiftLeft','ControlLeft','AltLeft',
+    'ArrowUp','ArrowDown','ArrowLeft','ArrowRight','CapsLock','Minus','Equal','BracketLeft',
+    'BracketRight','Backslash','Semicolon','Quote','Comma','Period','Slash','Backquote']);
+}
+const learnedKeyNames = () => [...new Set(Object.values(KEYMAP))];
+
+// ════════════════════════════════════════════════════════════════
+//  Render del editor
+// ════════════════════════════════════════════════════════════════
+function renderPad() {
+  PAD_BUTTONS.forEach(name => {
+    const slot = $('slot' + name) || $('btn' + name);
+    if (!slot) return;
+    const key = currentProfile.botones[name];
+    const isTrig = TRIGGERS.includes(name);
+    const val = isTrig ? currentProfile.gatillos[name] : key;
+    const f = friendly(val);
+    slot.innerHTML = isTrig ? `<span class="k">${f}</span>` : `<span class="k">${name} ${f}</span>`;
+    slot.classList.toggle('assigned', !!val);
+    slot.classList.remove('learning');
   });
 }
-buildBars();
 
-function update(key, p01) {
-  state[key] = p01;
-  const el = $('kb_'+key);
-  if (el) { el.querySelector('.v').textContent = p01.toFixed(2); el.querySelector('.bar > div').style.width = (p01*100).toFixed(1)+'%'; }
-  renderStick();
+function renderAxisGrids() {
+  ['left','right'].forEach(side => {
+    const grid = $('axisGrid' + (side === 'left' ? 'L' : 'R'));
+    const cfg = currentProfile.axes[side];
+    grid.innerHTML = `
+      <label>Activo</label><input type="checkbox" ${cfg.activo?'checked':''} onchange="setAxisActivo('${side}', this.checked)">
+      <label>X+ (derecha)</label>${axisSelect(side,'xPos')}
+      <label>X− (izquierda)</label>${axisSelect(side,'xNeg')}
+      <label>Y+ (arriba)</label>${axisSelect(side,'yPos')}
+      <label>Y− (abajo)</label>${axisSelect(side,'yNeg')}`;
+  });
 }
 
-function computeAxes() {
-  // Convención de gamepad (XInput): +1 derecha (D), +1 ARRIBA (W)
-  // X = D − A, Y = W − S  →  W presionada = y +1 = stick arriba
-  let X = state.D - state.A;
-  let Y = state.W - state.S;
-  const len = Math.hypot(X, Y);
-  if (len > 1) { X /= len; Y /= len; }
-  if (Math.abs(X) < 0.005) X = 0;
-  if (Math.abs(Y) < 0.005) Y = 0;
-  return { X, Y };
+function axisSelect(side, axis) {
+  const val = currentProfile.axes[side][axis];
+  const opts = ['<option value="">— ninguna —</option>']
+    .concat(learnedKeyNames().map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
+    .concat(standardKeys().filter(k => !learnedKeyNames().includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
+  return `<select onchange="setAxis('${side}','${axis}',this.value)">${opts.join('')}</select>`;
 }
 
-function renderStick() {
-  const { X, Y } = computeAxes();
-  const area = $('stickArea');
-  const cx = area.clientWidth/2, cy = area.clientHeight/2;
-  const R = area.clientWidth/2 - 30;
-  const dot = $('stickDot');
-  dot.style.left = (cx + X*R) + 'px';
-  dot.style.top  = (cy - Y*R) + 'px';   // Y positivo = arriba en pantalla
-  $('readout').textContent = `X: ${X.toFixed(2)}  Y: ${Y.toFixed(2)}`;
-  // enviar al daemon (throttle: solo si cambió > 0.005)
-  if (wsConnected && (Math.abs(X-lastSent.x) > 0.005 || Math.abs(Y-lastSent.y) > 0.005)) {
-    lastSent = { x: X, y: Y };
-    ws.send(JSON.stringify({ x: X, y: Y }));
+function setAxis(side, axis, val) {
+  currentProfile.axes[side][axis] = val || null;
+  sendState(true); saveProfile();
+}
+function setAxisActivo(side, on) {
+  currentProfile.axes[side].activo = on;
+  sendState(true); saveProfile();
+}
+
+function renderTrigGrid() {
+  const grid = $('trigGrid');
+  grid.innerHTML = TRIGGERS.map(name => {
+    const val = currentProfile.gatillos[name];
+    const opts = ['<option value="">— ninguna —</option>']
+      .concat(learnedKeyNames().map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
+      .concat(standardKeys().filter(k => !learnedKeyNames().includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
+    return `<label>${name}</label><select onchange="setTrigger('${name}',this.value)">${opts.join('')}</select>`;
+  }).join('');
+}
+
+function setTrigger(name, val) {
+  currentProfile.gatillos[name] = val || null;
+  renderPad(); sendState(true); saveProfile();
+}
+
+function renderChips() {
+  const chips = $('chips');
+  const entries = Object.entries(KEYMAP).sort((a,b) => a[1].localeCompare(b[1]));
+  chips.innerHTML = entries.map(([code, name]) =>
+    `<span class="chip"><b>${friendly(name)}</b><code>0x${(+code).toString(16)}</code><span class="x" title="Olvidar" onclick="forgetKey(${code})">×</span></span>`
+  ).join('') || '<span style="color:#888;font-size:12px">Aún no has aprendido teclas. Usa el asistente o clic en un botón del mando.</span>';
+}
+
+function forgetKey(code) {
+  delete KEYMAP[+code];
+  renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+  log('🗑 Tecla olvidada (código ' + code + ')');
+}
+
+function clearKeymap() {
+  if (!confirm('¿Olvidar TODAS las teclas aprendidas? (W/A/S/D volverán a ser la base)')) return;
+  KEYMAP = { 14:'KeyW', 9:'KeyA', 15:'KeyS', 21:'KeyD' };
+  renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+  log('🗑 Keymap reiniciado a W/A/S/D');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Aprendizaje de teclas
+// ════════════════════════════════════════════════════════════════
+function startLearn(padButton) {
+  if (!device) { st('⚠️ Conecta el teclado primero (botón 🔌).'); return; }
+  if (learnTarget) { $('slot' + learnTarget)?.classList.remove('learning'); }
+  learnTarget = padButton;
+  const slot = $('slot' + padButton) || $('btn' + padButton);
+  slot.classList.add('learning');
+  lastKeyDown = { code: null, t: 0 };
+  st(`⌨️ Presiona la tecla física para asignar a <b>${padButton}</b>... (clic derecho en el control para cancelar)`, 'warn');
+}
+
+function cancelLearn() {
+  learnAnyMode = false;
+  if (learnTarget) {
+    const slot = $('slot' + learnTarget) || $('btn' + learnTarget);
+    slot.classList.remove('learning');
   }
+  learnTarget = null;
+}
+
+function learnAnyKey() {
+  if (!device) { st('⚠️ Conecta el teclado primero.'); return; }
+  cancelLearn();
+  learnAnyMode = true;
+  st('⌨️ Presiona CUALQUIER tecla del teclado para aprenderla... (clic derecho para salir)', 'warn');
+}
+
+// Emparejar: window keydown (nombre estándar) + reporte HID (código del vendor)
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  lastKeyDown = { code: e.code, t: performance.now() };
+});
+
+window.addEventListener('contextmenu', e => {
+  if (learnTarget) { e.preventDefault(); cancelLearn(); st('⏸ Aprendizaje cancelado.', 'warn'); }
+});
+
+function tryLearnPair(hidCode) {
+  // hay un keydown reciente → emparejar
+  const dt = performance.now() - lastKeyDown.t;
+  if (lastKeyDown.code && dt < 400) {
+    const name = lastKeyDown.code;
+    KEYMAP[hidCode] = name;
+    lastKeyDown = { code: null, t: 0 };
+    renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+    return name;
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  HID: conexión y reportes
+// ════════════════════════════════════════════════════════════════
+function decodeReport(bytes) {
+  // Fase 4B: decodificador FUN60 (RID 5, header 0x1B, presión 9-bit, tecla byte3)
+  // → en la Fase 4A esto se vuelve un descriptor JSON por modelo de teclado.
+  if (bytes.length < 4) return null;
+  const pressure = bytes[2] * 256 + bytes[1];
+  const code = bytes[3];
+  return { pressure, code };
 }
 
 function onReport(reportId, data) {
   const bytes = Array.from(new Uint8Array(data.buffer || data));
-  if (bytes.length < 4) return;
-  const pressure = bytes[2]*256 + bytes[1];
-  const code = bytes[3];
-  const letter = KEYMAP[code];
-  if (!letter) return;
-  update(letter, Math.min(pressure / MAX_PRESSURE, 1.0));
-}
+  const r = decodeReport(bytes);
+  if (!r) return;
+  const p01 = Math.min(r.pressure / MAX_PRESSURE, 1.0);
+  const name = KEYMAP[r.code];
+
+  // ── Modo aprendizaje ──
+  if (learnTarget || learnAnyMode) {
+    const nm = tryLearnPair(r.code);
+    if (nm) {
+      if (learnTarget) {
+        // asignar al botón del mando
+        if (TRIGGERS.includes(learnTarget)) currentProfile.gatillos[learnTarget] = nm;
+        else currentProfile.botones[learnTarget] = nm;
+        const btn = learnTarget;
+        cancelLearn();
+        renderPad(); renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+        st(`✅ <b>${btn}</b> = ${friendly(nm)}`, 'ok');
+        log(`✅ ${btn} ← ${friendly(nm)} (código 0x${r.code.toString(16)})`);
+        sendState(true);
+      } else {
+        // modo suelto: solo aprender la tecla
+        learnAnyMode = false;
+        st(`✅ Aprendida: <b>${friendly(nm)}</b> = código 0x${r.code.toString(16)}`, 'ok');
+        $('readout').textContent = `${friendly(nm)} — presión ${p01.toFixed(2)}`;
+        log(`✅ Tecla aprendida: ${friendly(nm)} (0x${r.code.toString(16)})`);
+      }
+      return;
+    }
+    if (!name) {
+      st(`⚠️ Reporte recibido (código 0x${r.code.toString(16)}) sin nombre estándar — presiona la tecla de nuevo`, 'warn');
+    }
+    return;
+  }
+
+  // ── Modo normal: actualizar estado por tecla ──
+  // (durante el asistente, un reporte con keydown reciente SE aprende)
+  if (wizardPending && name) {
+    // ya está aprendida (el keydown del asistente llegó antes que el reporte)
+    wizardPending = null;
+    return;
+  }
+  if (wizardPending) {
+    const nm = tryLearnPair(r.code);
+    if (nm) {
+      wizardPending = null;
+      renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+    }
+    return;
+  }
+  if (!name) return;
+  state[name] = p01;
+  }
 
 async function connect() {
   if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
   try {
-    // Pedir SOLO el filtro de presión (usagePage 0xFFFF) primero
     const devices = await navigator.hid.requestDevice({
       filters: [
         ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
@@ -149,9 +594,6 @@ async function connect() {
       ]
     });
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
-    // Elegir el dispositivo con la colección de presión EXACTA:
-    // usagePage 0xFFFF Y usage 1 (el Dev 0 tiene 0xFFFF pero usage 2 —
-    // no filtrar solo por usagePage, hay DOS interfaces 0xFFFF).
     device = devices.find(d =>
       (d.collections || []).some(c => c.usagePage === 0xFFFF && c.usage === 1)
     ) || devices.find(d =>
@@ -164,43 +606,204 @@ async function connect() {
   } catch (e) { st('❌ Error: ' + e.message); }
 }
 
+// ════════════════════════════════════════════════════════════════
+//  WebSocket → daemon
+// ════════════════════════════════════════════════════════════════
 function connectDaemon() {
   if (ws && ws.readyState === WebSocket.OPEN) { ws.close(); return; }
-  try {
-    ws = new WebSocket(WS_URL);
-  } catch (e) { st('❌ No se pudo crear WebSocket: ' + e.message); return; }
+  try { ws = new WebSocket(WS_URL); }
+  catch (e) { st('❌ No se pudo crear WebSocket: ' + e.message); return; }
   ws.onopen = () => {
     wsConnected = true;
     $('wsState').textContent = 'daemon: ✅ conectado';
     $('wsState').className = 'ok';
     $('btnDaemon').textContent = '🔌 Desconectar daemon';
-    st('✅ Enviando ejes al mando virtual... presiona WASD', 'ok');
-    log('✅ Conectado al daemon. El stick virtual debe moverse.');
-    // enviar estado inicial: modo + bloqueo de teclas
-    ws.send(JSON.stringify({ mode: $('stickMode').value, block_keys: $('blockKeys').checked }));
+    st('✅ Mando virtual conectado. ¡A jugar!', 'ok');
+    log('✅ Conectado al daemon.');
+    sendState(true);
   };
   ws.onclose = () => {
     wsConnected = false;
     $('wsState').textContent = 'daemon: desconectado';
     $('wsState').className = 'warn';
     $('btnDaemon').textContent = '🔗 Conectar al daemon (mando virtual)';
+    log('Daemon desconectado.');
   };
   ws.onerror = () => {
-    $('wsState').textContent = 'daemon: ⚠️ error de conexión (¿daemon corriendo?)';
+    $('wsState').textContent = 'daemon: ⚠️ error (¿daemon corriendo?)';
     $('wsState').className = 'bad';
     log('⚠️ No se pudo conectar al daemon. ¿Ejecutaste joy_daemon.py?');
   };
 }
 
-function setMode() {
-  if (wsConnected) ws.send(JSON.stringify({ mode: $('stickMode').value }));
+// ════════════════════════════════════════════════════════════════
+//  Cálculo de estado y envío
+// ════════════════════════════════════════════════════════════════
+function sensThreshold() {
+  const s = +$('sens').value / 100;
+  $('sensVal').textContent = Math.round(s*100) + '%';
+  return s;
 }
 
-function setBlockKeys() {
-  const on = $('blockKeys').checked;
-  if (wsConnected) ws.send(JSON.stringify({ block_keys: on }));
-  log((on ? '🚫 Bloqueo de W/A/S/D ACTIVADO' : '✅ Bloqueo de W/A/S/D desactivado') + ' (las teclas vuelven a funcionar normal)');
+function computeAxes(side) {
+  const cfg = currentProfile.axes[side];
+  if (!cfg.activo) return { X: 0, Y: 0 };
+  const X = (state[cfg.xPos] || 0) - (state[cfg.xNeg] || 0);
+  const Y = (state[cfg.yPos] || 0) - (state[cfg.yNeg] || 0);
+  let len = Math.hypot(X, Y);
+  if (len > 1) { return { X: X/len, Y: Y/len }; }
+  return { X, Y };
 }
+
+function computeButtons() {
+  const th = sensThreshold();
+  const out = {};
+  for (const name of PAD_BUTTONS) {
+    const key = currentProfile.botones[name];
+    if (!key) { out[name] = 0; continue; }
+    const p = state[key] || 0;
+    const was = btnState[name] || false;
+    // histeresis: presiona arriba del umbral, suelta por debajo de 60% del umbral
+    if (!was && p >= th) btnState[name] = true;
+    else if (was && p <= th * 0.6) btnState[name] = false;
+    out[name] = btnState[name] ? 1 : 0;
+  }
+  return out;
+}
+
+function computeTriggers(dt) {
+  const th = sensThreshold();
+  for (const name of TRIGGERS) {
+    const key = currentProfile.gatillos[name];
+    if (!key) { trigVal[name] = 0; continue; }
+    const p = state[key] || 0;
+    const target = p >= th ? 1 : 0;
+    const v = trigVal[name];
+    // rampa: sube en ~150ms, baja en ~80ms (gatillo analógico realista)
+    const rate = target > v ? 6.0 : 12.0;
+    trigVal[name] = target > v ? Math.min(1, v + rate*dt) : Math.max(0, v - rate*dt);
+  }
+  return { LT: trigVal.LT, RT: trigVal.RT };
+}
+
+function computeBlockVks() {
+  // durante el aprendizaje NO bloqueamos nada: si bloqueamos la tecla que
+  // el usuario está presionando, el hook la consume y el navegador nunca
+  // recibe el keydown → no se puede emparejar.
+  if (learnTarget || learnAnyMode || wizardPending) return [];
+  if (!$('blockKeys').checked) return [];
+  const learned = new Set(learnedKeyNames());
+  const vks = new Set();
+  const add = code => { if (learned.has(code)) vksFor(code).forEach(v => vks.add(v)); };
+  // ejes
+  for (const side of ['left','right']) {
+    const cfg = currentProfile.axes[side];
+    if (cfg.activo) [cfg.xPos, cfg.xNeg, cfg.yPos, cfg.yNeg].forEach(add);
+  }
+  // botones
+  Object.values(currentProfile.botones).forEach(add);
+  // gatillos
+  Object.values(currentProfile.gatillos).forEach(add);
+  return [...vks];
+}
+
+let lastT = performance.now() / 1000;
+function sendState(force) {
+  if (!wsConnected) return;
+  const now = performance.now() / 1000;
+  const dt = Math.min(0.1, now - lastT);
+  lastT = now;
+
+  const L = computeAxes('left');
+  const R = computeAxes('right');
+  const btns = computeButtons();
+  const trig = computeTriggers(dt);
+  const vks = computeBlockVks();
+
+  // visual de sticks
+  $('dotL').style.left = (48 + L.X * 34) + 'px';
+  $('dotL').style.top  = (48 - L.Y * 34) + 'px';
+  $('dotR').style.left = (48 + R.X * 34) + 'px';
+  $('dotR').style.top  = (48 - R.Y * 34) + 'px';
+
+  // visual de botones y gatillos
+  PAD_BUTTONS.forEach(name => {
+    const slot = $('slot' + name) || $('btn' + name);
+    if (!slot || slot.classList.contains('learning')) return;
+    const lit = TRIGGERS.includes(name) ? trigVal[name] > 0.02 : !!btns[name];
+    slot.classList.toggle('lit', lit);
+  });
+  // readout
+  $('readout').textContent = `LX ${L.X.toFixed(2)} LY ${L.Y.toFixed(2)}  RX ${R.X.toFixed(2)} RY ${R.Y.toFixed(2)}  LT ${trig.LT.toFixed(2)} RT ${trig.RT.toFixed(2)}`;
+
+  const msg = { lx: L.X, ly: L.Y, rx: R.X, ry: R.Y, buttons: btns, triggers: trig, block_vks: vks };
+  if (force || !lastSent || JSON.stringify(msg) !== JSON.stringify(lastSent)) {
+    ws.send(JSON.stringify(msg));
+    lastSent = msg;
+  }
+}
+
+function setBlockKeys() { sendState(true); log(($('blockKeys').checked ? '🚫 Bloqueo de teclas mapeadas ACTIVADO' : '✅ Bloqueo desactivado') + ' — se actualiza el hook del daemon'); }
+
+// ════════════════════════════════════════════════════════════════
+//  Asistente: aprende las teclas que usa el perfil actual
+// ════════════════════════════════════════════════════════════════
+async function startWizard() {
+  if (!device) { st('⚠️ Conecta el teclado primero.'); return; }
+  if (learnTarget) cancelLearn();
+  const used = new Set();
+  for (const side of ['left','right']) {
+    const cfg = currentProfile.axes[side];
+    if (cfg.activo) [cfg.xPos, cfg.xNeg, cfg.yPos, cfg.yNeg].forEach(k => k && used.add(k));
+  }
+  Object.values(currentProfile.botones).forEach(k => k && used.add(k));
+  Object.values(currentProfile.gatillos).forEach(k => k && used.add(k));
+  const known = new Set(learnedKeyNames());
+  const missing = [...used].filter(k => !known.has(k));
+  if (!missing.length) { st('✅ ¡Todas las teclas del perfil ya están aprendidas!', 'ok'); return; }
+  log('🧙 Asistente: faltan ' + missing.length + ' teclas por aprender.');
+  st('🧙 Presiona la tecla <b>' + friendly(missing[0]) + '</b> (de ' + missing.length + ')...', 'warn');
+  for (let i = 0; i < missing.length; i++) {
+    const want = missing[i];
+    st(`🧙 <b>${i+1}/${missing.length}</b> — Presiona la tecla <b>${friendly(want)}</b>...`, 'warn');
+    const ok = await new Promise(resolve => {
+      wizardPending = want;
+      const handler = e => {
+        if (e.repeat) return;
+        if (e.code === want) {
+          lastKeyDown = { code: want, t: performance.now() };
+        }
+      };
+      window.addEventListener('keydown', handler);
+      const poll = setInterval(() => {
+        if (!wizardPending) { clearInterval(poll); window.removeEventListener('keydown', handler); resolve(true); }
+      }, 100);
+      setTimeout(() => { clearInterval(poll); window.removeEventListener('keydown', handler); resolve(false); }, 20000);
+    });
+    wizardPending = null;
+    if (!ok) {
+      st(`⏸ No se detectó la tecla <b>${friendly(want)}</b>. ¿Está conectado el teclado y sin el iot_manager?`, 'bad');
+      log(`⏸ Asistente interrumpido en ${friendly(want)}.`);
+      return;
+    }
+    // onReport ya la aprendió (o ya estaba): verificar y seguir
+    if (!learnedKeyNames().includes(want)) {
+      st(`⚠️ La tecla ${friendly(want)} no generó reporte de presión. Se salta (quizás no es analógica).`, 'warn');
+      log(`⚠️ ${friendly(want)} sin reporte de presión — omitida.`);
+    }
+  }
+  renderChips(); renderAxisGrids(); renderTrigGrid(); saveProfile();
+  st('✅ ¡Asistente terminado! Todas las teclas del perfil aprendidas.', 'ok');
+  log('🧙 Asistente completado.');
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Inicio
+// ════════════════════════════════════════════════════════════════
+loadProfilesFromStorage();
+fillProfileSel();
+renderPad(); renderAxisGrids(); renderTrigGrid(); renderChips();
+setInterval(() => sendState(false), 1000 / 120);  // 120 Hz
 </script>
 </body>
 </html>
