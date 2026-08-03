@@ -89,9 +89,28 @@ echo   [4/4] Arrancando daemon del mando virtual...
 start "FUN60 Daemon" /MIN cmd /k "cd /d %~dp0 && %PYTHON% -u phase3-daemon\joy_daemon.py"
 
 echo.
-echo   Abriendo la pagina (se abre directamente el archivo local)...
+echo   Abriendo la pagina en Chrome/Edge/Brave...
+echo   (WebHID NO funciona en Firefox; se busca un navegador compatible)
 timeout /t 3 /nobreak >nul
-start "" "%~dp0phase3-joystick\index.html"
+
+REM La pagina necesita WebHID, que solo existe en navegadores Chromium
+REM (Chrome, Edge, Brave). Firefox NO sirve. Se busca en este orden:
+set "PAGE_URL=%~dp0phase3-joystick\index.html"
+set "BROWSER="
+if not defined BROWSER if exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"  set "BROWSER=%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" set "BROWSER=C:\Program Files\Google\Chrome\Application\chrome.exe"
+if not defined BROWSER if exist "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" set "BROWSER=C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "C:\Program Files\Microsoft\Edge\Application\msedge.exe" set "BROWSER=C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+if not defined BROWSER if exist "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe" set "BROWSER=C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
+
+if defined BROWSER (
+    start "" "%BROWSER%" "file:///%PAGE_URL:\=/%"
+) else (
+    echo   [AVISO] No se encontro Chrome/Edge/Brave.
+    echo           Abriendo con el navegador por defecto...
+    echo           Si es Firefox, WebHID NO funcionara: usa Brave o instala Chrome.
+    start "" "%PAGE_URL%"
+)
 
 echo.
 echo   ============================================

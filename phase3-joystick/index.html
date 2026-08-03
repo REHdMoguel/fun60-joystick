@@ -600,7 +600,7 @@ function onReport(reportId, data) {
   }
 
 async function connect() {
-  if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
+  if (!navigator.hid) { st('❌ Este navegador NO soporta WebHID. Usa Chrome, Edge o Brave (Firefox no funciona).', 'bad'); log('❌ WebHID no disponible. Navegadores compatibles: Chrome, Edge, Brave. Firefox NO.'); return; }
   try {
     const devices = await navigator.hid.requestDevice({
       filters: [
