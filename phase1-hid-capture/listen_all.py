@@ -15,10 +15,12 @@ reportes_por_iface = {}
 
 
 def make_handler(name):
-    def h(report):
-        data = list(report.get_raw_data())[:8]
+    def h(raw):
+        if not raw:
+            return
+        data = list(raw)[:8]
         if len(reportes_por_iface[name]) < 3:
-            reportes_por_iface[name].append((report.report_id, data))
+            reportes_por_iface[name].append(data)
     return h
 
 

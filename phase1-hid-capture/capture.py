@@ -67,8 +67,8 @@ def cmd_watch(args):
     def make_handler(idx, dev):
         prev = [None]
 
-        def handler(report):
-            raw = report.get_raw_data()
+        def handler(raw):
+            # OJO: pywinusb pasa ReadOnlyList de bytes directamente al raw handler
             if not raw:
                 return
             bytes_ = list(raw)

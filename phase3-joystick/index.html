@@ -45,6 +45,8 @@
   .stick-vis { position:relative; width:96px; height:96px; border-radius:50%; border:2px solid var(--border); background:radial-gradient(circle at 50% 50%, #1c2128 0%, #0d1117 100%); }
   .stick-dot { position:absolute; width:26px; height:26px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #58a6ff, #1f6feb); left:50%; top:50%; transform:translate(-50%,-50%); box-shadow:0 0 10px rgba(88,166,255,.5); transition:left 16ms linear, top 16ms linear; }
   .slot.assigned { border-color:#58a6ff; color:#58a6ff; background:#12223b; }
+  .slot.unlearned { border-color:#d29922; color:#d29922; background:#2d2413; }
+  .slot.unlearned .hint { display:block; font-size:9px; color:#d29922; opacity:1; }
   .slot.learning { outline:3px solid #f2d04b; animation:pulse 0.8s infinite; }
   .slot.lit { background:#2ea043; color:#fff; border-color:#3fb950; }
   @keyframes pulse { 0%,100%{outline-color:#f2d04b;} 50%{outline-color:transparent;} }
@@ -163,9 +165,11 @@
       <h2>🎚 Gatillos</h2>
       <div class="cols">
         <div class="axis-grid" id="trigGrid"></div>
+        <button class="gray" onclick="startWizard()" style="align-self:flex-start">🧙 Aprender las teclas que faltan</button>
       </div>
       <h2>🧪 Teclas aprendidas</h2>
       <div id="readout">—</div>
+      <div id="reportCount" style="font-size:13px;color:#58a6ff">📡 reportes HID: 0</div>
       <button class="gray" onclick="learnAnyKey()">⌨️ Aprender una tecla suelta</button>
       <button class="red" onclick="clearKeymap()" style="margin-left:6px">🗑 Olvidar todas</button>
       <div class="chips" id="chips"></div>
@@ -195,7 +199,8 @@ const TRIGGERS = ['LT','RT'];
 let device = null;
 let ws = null;
 let wsConnected = false;
-let learnTarget = null;          // botón del mando esperando asignación
+let reportCount = 0;           // reportes HID recibidos (diagnóstico visual)
+let learnTarget = null;        // botón del mando esperando asignación
 let learnAnyMode = false;        // modo "aprender tecla suelta"
 let wizardPending = null;        // tecla que el asistente espera aprender (e.code)
 let learnReadyAt = 0;            // timestamp tras el cual se aceptan pulsaciones (espera desbloqueo del hook)
@@ -395,6 +400,7 @@ const learnedKeyNames = () => [...new Set(Object.values(KEYMAP))];
 //  Render del editor
 // ════════════════════════════════════════════════════════════════
 function renderPad() {
+  const learned = new Set(learnedKeyNames());
   PAD_BUTTONS.forEach(name => {
     const slot = $('slot' + name) || $('btn' + name);
     if (!slot) return;
@@ -402,8 +408,12 @@ function renderPad() {
     const isTrig = TRIGGERS.includes(name);
     const val = isTrig ? currentProfile.gatillos[name] : key;
     const f = friendly(val);
-    slot.innerHTML = isTrig ? `<span class="k">${f}</span>` : `<span class="k">${name} ${f}</span>`;
-    slot.classList.toggle('assigned', !!val);
+    // si la tecla asignada NO está aprendida aún, marcarla: presionarla no hará nada
+    const unlearned = val && !learned.has(val);
+    slot.innerHTML = (isTrig ? `<span class="k">${f}</span>` : `<span class="k">${name} ${f}</span>`)
+      + (unlearned ? `<span class="hint" title="Esta tecla aún no está aprendida: presiónala con '🧙 Asistente' o '⌨️ Aprender tecla suelta'">⚠️ sin aprender</span>` : '');
+    slot.classList.toggle('assigned', !!val && !unlearned);
+    slot.classList.toggle('unlearned', !!unlearned);
     slot.classList.remove('learning');
   });
 }
@@ -545,6 +555,7 @@ function decodeReport(bytes) {
 }
 
 function onReport(reportId, data) {
+  reportCount++;
   const bytes = Array.from(new Uint8Array(data.buffer || data));
   const r = decodeReport(bytes);
   if (!r) return;
@@ -602,21 +613,34 @@ function onReport(reportId, data) {
 async function connect() {
   if (!navigator.hid) { st('❌ Este navegador NO soporta WebHID. Usa Chrome, Edge o Brave (Firefox no funciona).', 'bad'); log('❌ WebHID no disponible. Navegadores compatibles: Chrome, Edge, Brave. Firefox NO.'); return; }
   try {
-    const devices = await navigator.hid.requestDevice({
-      filters: [
-        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
-        ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid })),
-      ]
+    // 1er intento: pedir SOLO la interfaz de presión (0xFFFF/usage 1) para que
+    // el diálogo muestre únicamente la correcta (el FUN60 expone 4 interfaces
+    // HID con el mismo nombre; si el usuario elige el teclado normal, conecta
+    // pero NO recibe presión — el síntoma "conecta pero no detecta").
+    let devices = await navigator.hid.requestDevice({
+      filters: PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 }))
     });
+    if (!devices.length) {
+      // 2º intento (usuario canceló o el filtro no mostró nada): pedir todo el FUN60
+      devices = await navigator.hid.requestDevice({
+        filters: PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid }))
+      });
+    }
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
+    // Elegir la interfaz con la colección de presión EXACTA (0xFFFF Y usage 1)
     device = devices.find(d =>
       (d.collections || []).some(c => c.usagePage === 0xFFFF && c.usage === 1)
     ) || devices.find(d =>
       (d.collections || []).some(c => c.usagePage === 0xFFFF)
-    ) || devices[0];
+    ) || null;
+    if (!device) {
+      st('❌ Seleccionaste el teclado NORMAL, no la interfaz de presión. Vuelve a conectar y elige la entrada correcta.', 'bad');
+      log('❌ El dispositivo elegido no tiene la interfaz de presión (0xFFFF/1).');
+      return;
+    }
     await device.open();
-    st(`✅ Teclado conectado: ${device.productName}`, 'ok');
-    log('✅ Teclado conectado (interfaz de presión).');
+    st(`✅ Teclado conectado: ${device.productName} (interfaz de presión)`, 'ok');
+    log('✅ Teclado conectado (interfaz de presión 0xFFFF/1).');
     device.addEventListener('inputreport', e => onReport(e.reportId, e.data));
   } catch (e) { st('❌ Error: ' + e.message); }
 }
@@ -754,8 +778,10 @@ function sendState(force) {
     const lit = TRIGGERS.includes(name) ? trigVal[name] > 0.02 : !!btns[name];
     slot.classList.toggle('lit', lit);
   });
-  // readout
+  // readout + contador de reportes (diagnóstico: si no sube, no llegan datos)
   $('readout').textContent = `LX ${L.X.toFixed(2)} LY ${L.Y.toFixed(2)}  RX ${R.X.toFixed(2)} RY ${R.Y.toFixed(2)}  LT ${trig.LT.toFixed(2)} RT ${trig.RT.toFixed(2)}`;
+  const rc = $('reportCount');
+  if (rc) rc.textContent = '📡 reportes HID: ' + reportCount;
 
   const msg = { lx: L.X, ly: L.Y, rx: R.X, ry: R.Y, buttons: btns, triggers: trig, block_vks: vks };
   if (force || !lastSent || JSON.stringify(msg) !== JSON.stringify(lastSent)) {
