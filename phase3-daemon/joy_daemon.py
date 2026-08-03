@@ -155,8 +155,13 @@ class VirtualPad:
         interval = 1.0 / UPDATE_HZ
         while not self._stop.is_set():
             t0 = time.monotonic()
-            with self._lock:
-                self._apply_locked()
+            try:
+                with self._lock:
+                    self._apply_locked()
+            except Exception as e:
+                # un hilo daemon que lanza excepción muere SILENCIOSAMENTE y
+                # deja el mando congelado en el último valor — loguear y seguir
+                print(f"[!] error aplicando estado al mando: {e}", flush=True)
             # dormir lo que resta del intervalo (evita drift)
             elapsed = time.monotonic() - t0
             time.sleep(max(0.0, interval - elapsed))
