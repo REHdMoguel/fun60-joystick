@@ -132,15 +132,36 @@ class KeyBlocker:
 
 
 # ── Virtual pad ────────────────────────────────────────────────────────
+# Patrón "último valor gana" (como un mando real):
+#   - handle() solo actualiza valores en memoria (nunca toca el driver)
+#   - un hilo dedicado aplica el estado al mando a 250 Hz
+#   → aunque lleguen ráfagas de mensajes con el CPU saturado, el stick
+#     siempre refleja el ÚLTIMO estado, sin acumular retraso.
+UPDATE_HZ = 250
+
+
 class VirtualPad:
     def __init__(self):
         self.pad = vg.VX360Gamepad()
+        self._lock = threading.Lock()
         self.mode = "left"          # "left" | "right"
         self.x = 0.0
         self.y = 0.0
         self.buttons = {}
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
 
-    def apply(self):
+    def _loop(self):
+        interval = 1.0 / UPDATE_HZ
+        while not self._stop.is_set():
+            t0 = time.monotonic()
+            with self._lock:
+                self._apply_locked()
+            # dormir lo que resta del intervalo (evita drift)
+            elapsed = time.monotonic() - t0
+            time.sleep(max(0.0, interval - elapsed))
+
+    def _apply_locked(self):
         p = self.pad
         if self.mode == "left":
             p.left_joystick_float(x_value_float=self.x, y_value_float=self.y)
@@ -157,16 +178,24 @@ class VirtualPad:
                 p.release_button(btn)
         p.update()
 
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=2)
+
     def handle(self, msg: dict):
-        if "x" in msg:
-            self.x = max(-1.0, min(1.0, float(msg["x"])))
-        if "y" in msg:
-            self.y = max(-1.0, min(1.0, float(msg["y"])))
-        if "mode" in msg:
-            self.mode = msg["mode"]
-        if "buttons" in msg:
-            self.buttons = msg["buttons"]
-        self.apply()
+        # SOLO actualizar estado en memoria — el hilo aplica a 250 Hz
+        with self._lock:
+            if "x" in msg:
+                self.x = max(-1.0, min(1.0, float(msg["x"])))
+            if "y" in msg:
+                self.y = max(-1.0, min(1.0, float(msg["y"])))
+            if "mode" in msg:
+                self.mode = msg["mode"]
+            if "buttons" in msg:
+                self.buttons = msg["buttons"]
 
 
 # ── WebSocket handler ──────────────────────────────────────────────────
@@ -187,14 +216,15 @@ async def handler(ws, pad: VirtualPad, blocker: KeyBlocker):
         pass
     finally:
         # al desconectarse: centrar stick y desbloquear teclas
-        pad.x, pad.y = 0.0, 0.0
-        pad.apply()
+        with pad._lock:
+            pad.x, pad.y = 0.0, 0.0
         blocker.set_enabled(False)
         print("[-] cliente desconectado, stick centrado, WASD desbloqueado", flush=True)
 
 
 async def main():
     pad = VirtualPad()
+    pad.start()
     blocker = KeyBlocker()
     blocker.start()
     print(f"[*] FUN60 Joystick daemon en ws://{HOST}:{PORT} — Ctrl+C para salir", flush=True)
@@ -203,6 +233,7 @@ async def main():
         async with websockets.serve(lambda ws: handler(ws, pad, blocker), HOST, PORT):
             await asyncio.Future()  # corre para siempre
     finally:
+        pad.stop()
         blocker.stop()
 
 
