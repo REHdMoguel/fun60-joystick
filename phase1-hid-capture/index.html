@@ -95,7 +95,9 @@ async function connect() {
       ]
     });
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
-    device = devices[0];
+    device = devices.find(d =>
+      (d.collections || []).some(c => c.usagePage === 0xFFFF)
+    ) || devices[0];
     await device.open();
     st(`✅ Conectado: ${device.productName}`, 'ok');
     $('btnMap').disabled = false;

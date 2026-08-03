@@ -141,6 +141,7 @@ function onReport(reportId, data) {
 async function connect() {
   if (!navigator.hid) { st('❌ Este navegador no soporta WebHID (usa Chrome o Edge).'); return; }
   try {
+    // Pedir SOLO el filtro de presión (usagePage 0xFFFF) primero
     const devices = await navigator.hid.requestDevice({
       filters: [
         ...PRODUCTS.map(pid => ({ vendorId: VENDOR, productId: pid, usagePage: 0xFFFF, usage: 1 })),
@@ -148,10 +149,15 @@ async function connect() {
       ]
     });
     if (!devices.length) { st('⚠️ No se seleccionó ningún dispositivo.'); return; }
-    device = devices[0];
+    // Elegir el dispositivo que tenga la colección de presión (usagePage 0xFFFF).
+    // Chrome puede listar varias interfaces del mismo teclado (MI_00, MI_01, MI_02)
+    // y devices[0] NO siempre es la correcta — buscar explícitamente.
+    device = devices.find(d =>
+      (d.collections || []).some(c => c.usagePage === 0xFFFF)
+    ) || devices[0];
     await device.open();
     st(`✅ Teclado conectado: ${device.productName}`, 'ok');
-    log('✅ Teclado conectado.');
+    log('✅ Teclado conectado (interfaz de presión).');
     device.addEventListener('inputreport', e => onReport(e.reportId, e.data));
   } catch (e) { st('❌ Error: ' + e.message); }
 }
