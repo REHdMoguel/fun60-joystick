@@ -145,7 +145,12 @@ class KeyBlocker:
         atómica en CPython y el objeto nunca se muta in-place.
         """
         with self._lock:
-            self._vks = frozenset(int(v) for v in vk_list) if vk_list else frozenset()
+            new = frozenset(int(v) for v in vk_list) if vk_list else frozenset()
+            changed = new != self._vks
+            self._vks = new
+        # solo loguear cuando CAMBIA (la página envía a 120 Hz; sin esto el
+        # log se llena de "bloqueando 4 VK" repetidos)
+        if changed:
             print(f"[*] bloqueando {len(self._vks)} VK: "
                   f"{[hex(v) for v in sorted(self._vks)]}", flush=True)
 
@@ -337,6 +342,11 @@ async def main():
     try:
         async with websockets.serve(lambda ws: handler(ws, pad, blocker), HOST, PORT):
             await asyncio.Future()  # corre para siempre
+    except OSError as e:
+        # puerto ocupado: otro daemon ya está corriendo — no morir en silencio
+        print(f"[!] ERROR: no se pudo escuchar en {HOST}:{PORT} — {e}", flush=True)
+        print("[!] ¿Otro joy_daemon ya está corriendo? Cierra el daemon anterior", flush=True)
+        print("[!] (revisa el Administrador de tareas o las ventanas 'FUN60 Daemon')", flush=True)
     finally:
         pad.stop()
         blocker.stop()
