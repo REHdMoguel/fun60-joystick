@@ -1,6 +1,6 @@
-# Dependencias del proyecto con versiones exactas (reproducibilidad).
-# Generado con `pip freeze` — requisitos mínimos + sus dependencias.
-# Para instalar:  pip install -r requirements-lock.txt
+# Versiones exactas probadas con fun60-joystick
+# Generado con: pip freeze
+# Actualiza con: pip freeze > requirements-lock.txt
 vgamepad==0.1.0
 websockets==15.0.1
 pywinusb==0.4.2

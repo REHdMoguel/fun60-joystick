@@ -94,7 +94,8 @@ En la página web que se abrió:
 
 ### Paso 5 — Apagar
 
-Cierra las **2 ventanas negras minimizadas** (o la ventana del lanzador).
+Cierra la **ventana negra minimizada** llamada "FUN60 Daemon" (o busca el proceso
+en el Administrador de tareas y ciérralo).
 El mando virtual desaparece y todo vuelve a la normalidad.
 
 ---
@@ -177,6 +178,7 @@ Detalles completos en [`docs/protocolo-reporte.md`](docs/protocolo-reporte.md).
 fun60-joystick/
 ├── iniciar.bat              ← ⭐ LANZADOR: doble clic y listo
 ├── requirements.txt         ← librerías necesarias (las instala el lanzador)
+├── requirements-lock.txt    ← versiones exactas instaladas (para reproducibilidad)
 ├── docs/
 │   ├── plan.md              ← plan del proyecto (fases)
 │   └── protocolo-reporte.md ← protocolo HID descifrado
@@ -184,6 +186,7 @@ fun60-joystick/
 ├── phase2-lector/           ← prototipo visual del stick (para desarrolladores)
 ├── phase3-daemon/           ← daemon del mando virtual
 │   ├── joy_daemon.py        ← ⭐ el daemon (no tocar a menos que sepas)
+│   ├── win32_hooks.py       ← tipos Win32 compartidos (hook de teclado)
 │   ├── test_protocolo_v4.py ← prueba del protocolo completo (XInput)
 │   └── test_page_logic.js   ← prueba de la lógica de la página (node)
 └── phase3-joystick/         ← página web principal (editor del mando + perfiles)
