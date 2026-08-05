@@ -15,35 +15,14 @@ import ctypes
 import json
 import threading
 import time
-from ctypes import wintypes
 
 import websockets
 
-WH_KEYBOARD_LL = 13
+# Tipos/firmas Win32 compartidos (Mejora 6 del review): win32_hooks.py
+from win32_hooks import KBDLLHOOKSTRUCT, HOOKPROC, _user32, WH_KEYBOARD_LL
+
 VK_W, VK_A, VK_S, VK_D = 0x57, 0x41, 0x53, 0x44
 BLOCK = {VK_W, VK_A, VK_S, VK_D}
-
-_user32 = ctypes.windll.user32
-
-
-class KBDLLHOOKSTRUCT(ctypes.Structure):
-    _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD),
-                ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
-
-
-HOOKPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int,
-                              wintypes.WPARAM, wintypes.LPARAM)
-
-_user32.SetWindowsHookExW.restype = wintypes.HHOOK
-_user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC,
-                                      wintypes.HINSTANCE, wintypes.DWORD]
-_user32.CallNextHookEx.restype = ctypes.c_ssize_t
-_user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int,
-                                   wintypes.WPARAM, wintypes.LPARAM]
-_user32.GetMessageW.restype = wintypes.BOOL
-_user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
-                                wintypes.UINT, wintypes.UINT]
 
 
 class TestHook:

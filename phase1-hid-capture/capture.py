@@ -10,7 +10,9 @@ Uso:
   python capture.py --watch         # leer reportes en vivo y resaltar bytes que cambian
   python capture.py --watch --len 64
 """
-import argparse, time, sys
+import argparse
+import sys
+import time
 try:
     import pywinusb.hid as hid
 except ImportError:

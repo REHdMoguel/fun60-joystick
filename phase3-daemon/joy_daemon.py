@@ -40,47 +40,15 @@ HOST = "127.0.0.1"
 PORT = 8765
 
 # ── Key blocker (low-level keyboard hook) ──────────────────────────────
-WH_KEYBOARD_LL = 13
-WM_KEYDOWN = 0x0100
-WM_KEYUP = 0x0101
-WM_SYSKEYDOWN = 0x0104
-WM_SYSKEYUP = 0x0105
-WM_QUIT = 0x0012
+# Tipos/firmas Win32 compartidos (Mejora 6 del review): win32_hooks.py
+from win32_hooks import (  # noqa: E402
+    KBDLLHOOKSTRUCT, HOOKPROC, _user32,
+    WH_KEYBOARD_LL, WM_QUIT,
+)
 
 # VK codes de teclas genéricas (los específicos llegan por WebSocket)
 VK_W, VK_A, VK_S, VK_D = 0x57, 0x41, 0x53, 0x44
 DEFAULT_BLOCK_VKS = [VK_W, VK_A, VK_S, VK_D]
-
-_user32 = ctypes.windll.user32
-
-
-class KBDLLHOOKSTRUCT(ctypes.Structure):
-    _fields_ = [
-        ("vkCode", wintypes.DWORD),
-        ("scanCode", wintypes.DWORD),
-        ("flags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-    ]
-
-
-HOOKPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int,
-                              wintypes.WPARAM, wintypes.LPARAM)
-
-# Declarar firmas correctas (HHOOK es puntero de 64 bits; sin argtypes,
-# ctypes trunca el puntero y CallNextHookEx falla con OverflowError)
-_user32.SetWindowsHookExW.restype = wintypes.HHOOK
-_user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC,
-                                      wintypes.HINSTANCE, wintypes.DWORD]
-_user32.CallNextHookEx.restype = ctypes.c_ssize_t
-_user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int,
-                                   wintypes.WPARAM, wintypes.LPARAM]
-_user32.GetMessageW.restype = wintypes.BOOL
-_user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
-                                wintypes.UINT, wintypes.UINT]
-_user32.PostThreadMessageW.restype = wintypes.BOOL
-_user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT,
-                                       wintypes.WPARAM, wintypes.LPARAM]
 
 
 class KeyBlocker:
@@ -182,10 +150,8 @@ class VirtualPad:
     def __init__(self):
         self.pad = vg.VX360Gamepad()
         self._lock = threading.Lock()
-        # sticks: modo compat (backwards) + dual nativo
-        self.mode = "left"          # "left" | "right" (solo usado si llegan x/y)
-        self.x = 0.0                # eje legacy (stick según mode)
-        self.y = 0.0
+        # sticks duales nativos (la página Fase 4 siempre manda lx/ly/rx/ry;
+        # el protocolo legacy x/y + mode se eliminó en la Mejora 5 del review)
         self.lx = 0.0
         self.ly = 0.0
         self.rx = 0.0
@@ -245,17 +211,7 @@ class VirtualPad:
     def handle(self, msg: dict):
         # SOLO actualizar estado en memoria — el hilo aplica a 250 Hz
         with self._lock:
-            # modo legacy: x/y van al stick indicado por "mode"
-            if "x" in msg or "y" in msg:
-                self.x = self._clamp1(msg.get("x", self.x))
-                self.y = self._clamp1(msg.get("y", self.y))
-                if self.mode == "left":
-                    self.lx, self.ly = self.x, self.y
-                else:
-                    self.rx, self.ry = self.x, self.y
-            if "mode" in msg:
-                self.mode = msg["mode"]
-            # sticks duales nativos (la página nueva los manda siempre)
+            # sticks duales nativos (la página Fase 4 los manda siempre)
             if "lx" in msg:
                 self.lx = self._clamp1(msg["lx"])
             if "ly" in msg:

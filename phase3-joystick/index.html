@@ -433,9 +433,10 @@ function renderAxisGrids() {
 
 function axisSelect(side, axis) {
   const val = currentProfile.axes[side][axis];
+  const learned = learnedKeyNames();   // calcular UNA vez (antes se llamaba 2×)
   const opts = ['<option value="">— ninguna —</option>']
-    .concat(learnedKeyNames().map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
-    .concat(standardKeys().filter(k => !learnedKeyNames().includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
+    .concat(learned.map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
+    .concat(standardKeys().filter(k => !learned.includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
   return `<select onchange="setAxis('${side}','${axis}',this.value)">${opts.join('')}</select>`;
 }
 
@@ -450,11 +451,12 @@ function setAxisActivo(side, on) {
 
 function renderTrigGrid() {
   const grid = $('trigGrid');
+  const learned = learnedKeyNames();   // calcular UNA vez (antes se llamaba 2×)
   grid.innerHTML = TRIGGERS.map(name => {
     const val = currentProfile.gatillos[name];
     const opts = ['<option value="">— ninguna —</option>']
-      .concat(learnedKeyNames().map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
-      .concat(standardKeys().filter(k => !learnedKeyNames().includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
+      .concat(learned.map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`))
+      .concat(standardKeys().filter(k => !learned.includes(k)).map(k => `<option value="${k}" ${k===val?'selected':''}>${friendly(k)}</option>`));
     return `<label>${name}</label><select onchange="setTrigger('${name}',this.value)">${opts.join('')}</select>`;
   }).join('');
 }
@@ -608,7 +610,7 @@ function onReport(reportId, data) {
   }
   if (!name) return;
   state[name] = p01;
-  }
+}  // ← cierre de onReport (estaba mal indentado, parecía llave huérfana)
 
 async function connect() {
   if (!navigator.hid) { st('❌ Este navegador NO soporta WebHID. Usa Chrome, Edge o Brave (Firefox no funciona).', 'bad'); log('❌ WebHID no disponible. Navegadores compatibles: Chrome, Edge, Brave. Firefox NO.'); return; }
@@ -790,7 +792,13 @@ function sendState(force) {
   }
 }
 
-function setBlockKeys() { sendState(true); log(($('blockKeys').checked ? '🚫 Bloqueo de teclas mapeadas ACTIVADO' : '✅ Bloqueo desactivado') + ' — se actualiza el hook del daemon'); }
+function setBlockKeys() {
+  if (!$('blockKeys').checked && !wsConnected) {
+    log('⚠️ Daemon desconectado: el bloqueo de teclas no se puede desactivar remotamente. Conecta el daemon o reinicia el equipo si las teclas siguen bloqueadas.');
+  }
+  sendState(true);
+  log($('blockKeys').checked ? '🚫 Bloqueo ACTIVADO' : '✅ Bloqueo desactivado');
+}
 
 // ════════════════════════════════════════════════════════════════
 //  Asistente: aprende las teclas que usa el perfil actual
@@ -814,6 +822,8 @@ async function startWizard() {
     const want = missing[i];
     st(`🧙 <b>${i+1}/${missing.length}</b> — Presiona la tecla <b>${friendly(want)}</b>...`, 'warn');
     const ok = await new Promise(resolve => {
+      const TIMEOUT_S = 20;
+      let remaining = TIMEOUT_S;
       wizardPending = want;
       // mismo retardo que el aprendizaje manual: el desbloqueo (block_vks=[])
       // viaja por WebSocket al daemon; sin esperar, el hook viejo consumiría
@@ -827,10 +837,21 @@ async function startWizard() {
         }
       };
       window.addEventListener('keydown', handler);
+      // contador regresivo visible: actualiza el estado cada segundo
+      const countdown = setInterval(() => {
+        remaining--;
+        if (remaining > 0) {
+          st(`🧙 <b>${i+1}/${missing.length}</b> — Presiona <b>${friendly(want)}</b>... (${remaining}s)`, 'warn');
+        }
+      }, 1000);
+      const cleanup = () => {
+        clearInterval(countdown);
+        window.removeEventListener('keydown', handler);
+      };
       const poll = setInterval(() => {
-        if (!wizardPending) { clearInterval(poll); window.removeEventListener('keydown', handler); resolve(true); }
+        if (!wizardPending) { clearInterval(poll); cleanup(); resolve(true); }
       }, 100);
-      setTimeout(() => { clearInterval(poll); window.removeEventListener('keydown', handler); resolve(false); }, 20000);
+      setTimeout(() => { clearInterval(poll); cleanup(); resolve(false); }, TIMEOUT_S * 1000);
     });
     wizardPending = null;
     if (!ok) {

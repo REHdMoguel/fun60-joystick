@@ -20,3 +20,6 @@ desktop.ini
 
 # Config local del usuario (no subir)
 *.local
+
+# Notas internas de sesión (no subir)
+docs/CONTINUAR-AQUI.md

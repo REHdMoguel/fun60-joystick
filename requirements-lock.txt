@@ -1,0 +1,8 @@
+# Dependencias del proyecto con versiones exactas (reproducibilidad).
+# Generado con `pip freeze` — requisitos mínimos + sus dependencias.
+# Para instalar:  pip install -r requirements-lock.txt
+vgamepad==0.1.0
+websockets==15.0.1
+pywinusb==0.4.2
+pywin32==311
+colorama==0.4.6
