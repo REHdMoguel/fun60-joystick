@@ -36,6 +36,7 @@ global.URL = { createObjectURL: () => 'blob:x' };
 global.FileReader = class {};
 global.setInterval = () => 0;
 global.setTimeout = (fn) => 0;
+global.requestAnimationFrame = () => 0;  // el loop rAF de la página no recursa en el test
 `;
 
 // quitar el setInterval de arranque de la página

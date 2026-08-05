@@ -269,6 +269,12 @@ let wizardPending = null;        // tecla que el asistente espera aprender (e.co
 let learnReadyAt = 0;            // timestamp tras el cual se aceptan pulsaciones (espera desbloqueo del hook)
 let lastKeyDown = { code: null, t: 0 };   // para emparejar keydown + reporte HID
 let state = {};                  // keyName (e.code) → presión 0..1
+// NOTA sobre NVIDIA Frame Generation:
+// Con FG activo, el juego solo procesa inputs en los frames reales (~20-40/s = 25-50ms).
+// El pipeline de este daemon es más rápido que eso; el lag percibido bajo FG
+// es inherente a la tecnología, no un bug del código.
+let stateTs = {};   // keyName → timestamp del último reporte recibido
+const STATE_DECAY_MS = 80;  // si no llega reporte en 80ms, la tecla está suelta
 let btnState = {};               // botón mando → presionado (histeresis)
 let trigVal = { LT: 0, RT: 0 };  // valor actual de gatillos (rampa)
 let lastSent = null;
@@ -680,7 +686,10 @@ function onReport(reportId, data) {
     return;
   }
   if (!name) return;
+  stateTs[name] = performance.now();
   state[name] = p01;
+  // Enviar inmediatamente al daemon sin esperar el tick del timer (fix latencia #2)
+  sendState(false);
 }  // ← cierre de onReport (estaba mal indentado, parecía llave huérfana)
 
 async function connect() {
@@ -779,6 +788,17 @@ function sensThreshold() {
   return s;
 }
 
+// Expira teclas sin reporte reciente → las pone en 0 (tecla suelta)
+function decayState() {
+  const now = performance.now();
+  for (const key of Object.keys(stateTs)) {
+    if (now - stateTs[key] > STATE_DECAY_MS) {
+      state[key] = 0;
+      delete stateTs[key];
+    }
+  }
+}
+
 function computeAxes(side) {
   const cfg = currentProfile.axes[side];
   if (!cfg.activo) return { X: 0, Y: 0 };
@@ -850,6 +870,7 @@ function computeBlockVks() {
 let lastT = performance.now() / 1000;
 function sendState(force) {
   if (!wsConnected) return;
+  decayState();   // expira teclas sueltas antes de calcular (fix latencia #1)
   const now = performance.now() / 1000;
   const dt = Math.min(0.1, now - lastT);
   lastT = now;
@@ -970,7 +991,16 @@ loadProfilesFromStorage();
 fillProfileSel();
 renderPad(); renderAxisGrids(); renderTrigGrid(); renderChips();
 updateSetupGuide();  // estado inicial de la guía (paso 1 activo)
-setInterval(() => sendState(false), 1000 / 120);  // 120 Hz
+// Loop principal con requestAnimationFrame en vez de setInterval (fix latencia #3):
+// rAF tiene prioridad más alta en el navegador y está sincronizado con el display,
+// no con un timer arbitrario que el browser puede retrasar bajo carga de GPU.
+// Su función ahora: mantener la rampa de gatillos y el visual de los sticks
+// (el envío inmediato por reporte HID ya cubre la latencia de teclas).
+function rafLoop() {
+  sendState(false);
+  requestAnimationFrame(rafLoop);
+}
+requestAnimationFrame(rafLoop);
 </script>
 </body>
 </html>
