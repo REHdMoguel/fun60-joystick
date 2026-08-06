@@ -274,7 +274,13 @@ let state = {};                  // keyName (e.code) → presión 0..1
 // El pipeline de este daemon es más rápido que eso; el lag percibido bajo FG
 // es inherente a la tecnología, no un bug del código.
 let stateTs = {};   // keyName → timestamp del último reporte recibido
-const STATE_DECAY_MS = 80;  // si no llega reporte en 80ms, la tecla está suelta
+// DIAGNÓSTICO (2026-08-05): el FUN60 NO hace streaming continuo — reporta
+// densamente (~2ms p95) cuando la presión cambia pero se calla mientras
+// mantienes la tecla firme (huecos de hasta ~3.7s observados). Un decay de
+// 80ms cortaba las pulsaciones sostenidas ("regresa a neutral"). El teclado
+// YA envía la curva de soltado hasta presión 0 al soltar, así que el decay
+// solo es un seguro anti-"tecla pegada" → 500ms es seguro y no corta pulsos.
+const STATE_DECAY_MS = 500;
 let btnState = {};               // botón mando → presionado (histeresis)
 let trigVal = { LT: 0, RT: 0 };  // valor actual de gatillos (rampa)
 let lastSent = null;
@@ -688,9 +694,8 @@ function onReport(reportId, data) {
   if (!name) return;
   stateTs[name] = performance.now();
   state[name] = p01;
-  // Enviar inmediatamente al daemon sin esperar el tick del timer (fix latencia #2)
-  sendState(false);
-}  // ← cierre de onReport (estaba mal indentado, parecía llave huérfana)
+
+}  // ← cierre de onReport
 
 async function connect() {
   if (!navigator.hid) { st('❌ Este navegador NO soporta WebHID. Usa Chrome, Edge o Brave (Firefox no funciona).', 'bad'); log('❌ WebHID no disponible. Navegadores compatibles: Chrome, Edge, Brave. Firefox NO.'); return; }
@@ -868,9 +873,24 @@ function computeBlockVks() {
 }
 
 let lastT = performance.now() / 1000;
-function sendState(force) {
-  if (!wsConnected) return;
-  decayState();   // expira teclas sueltas antes de calcular (fix latencia #1)
+
+// Expira teclas sin reporte reciente → las pone en 0 (tecla suelta)
+// Resuelve el bug de "tecla trabada": si el FUN60 deja de mandar reportes para
+// una tecla (porque la soltaste), state[name] queda en 0 tras STATE_DECAY_MS ms.
+function decayState() {
+  const now = performance.now();
+  for (const key of Object.keys(stateTs)) {
+    if (now - stateTs[key] > STATE_DECAY_MS) {
+      state[key] = 0;
+      delete stateTs[key];
+    }
+  }
+}
+
+// updateVisuals: actualiza el panel visual SIEMPRE (con o sin daemon conectado).
+// Permite ver la presión de las teclas y los sticks aunque el daemon no esté corriendo.
+function updateVisuals() {
+  decayState();
   const now = performance.now() / 1000;
   const dt = Math.min(0.1, now - lastT);
   lastT = now;
@@ -879,7 +899,6 @@ function sendState(force) {
   const R = computeAxes('right');
   const btns = computeButtons();
   const trig = computeTriggers(dt);
-  const vks = computeBlockVks();
 
   // visual de sticks
   $('dotL').style.left = (48 + L.X * 34) + 'px';
@@ -894,10 +913,18 @@ function sendState(force) {
     const lit = TRIGGERS.includes(name) ? trigVal[name] > 0.02 : !!btns[name];
     slot.classList.toggle('lit', lit);
   });
-  // readout + contador de reportes (diagnóstico: si no sube, no llegan datos)
+  // readout + contador de reportes
   $('readout').textContent = `LX ${L.X.toFixed(2)} LY ${L.Y.toFixed(2)}  RX ${R.X.toFixed(2)} RY ${R.Y.toFixed(2)}  LT ${trig.LT.toFixed(2)} RT ${trig.RT.toFixed(2)}`;
   const rc = $('reportCount');
   if (rc) rc.textContent = '📡 reportes HID: ' + reportCount;
+
+  return { L, R, btns, trig };
+}
+
+function sendState(force) {
+  if (!wsConnected) return;
+  const { L, R, btns, trig } = updateVisuals();
+  const vks = computeBlockVks();
 
   const msg = { lx: L.X, ly: L.Y, rx: R.X, ry: R.Y, buttons: btns, triggers: trig, block_vks: vks };
   if (force || !lastSent || JSON.stringify(msg) !== JSON.stringify(lastSent)) {
@@ -997,7 +1024,8 @@ updateSetupGuide();  // estado inicial de la guía (paso 1 activo)
 // Su función ahora: mantener la rampa de gatillos y el visual de los sticks
 // (el envío inmediato por reporte HID ya cubre la latencia de teclas).
 function rafLoop() {
-  sendState(false);
+  updateVisuals();          // visual siempre activo (sticks, readout, botones)
+  if (wsConnected) sendState(false);  // envío al daemon solo si está conectado
   requestAnimationFrame(rafLoop);
 }
 requestAnimationFrame(rafLoop);
